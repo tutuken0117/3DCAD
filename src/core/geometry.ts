@@ -61,18 +61,22 @@ export function planeBasis(n: Vector3): { u: Vector3; v: Vector3 } {
   return { u, v };
 }
 
-/** 平面多角形を三角形分割する。返り値は pts のインデックスの 3 つ組 */
-export function triangulate(pts: Vector3[], normal?: Vector3): number[][] {
+/**
+ * 平面多角形を三角形分割する（穴あり可）。
+ * 返り値のインデックスは [...pts, ...holes[0], ...holes[1], ...] の通し番号
+ */
+export function triangulate(pts: Vector3[], normal?: Vector3, holes: Vector3[][] = []): number[][] {
   if (pts.length < 3) return [];
-  if (pts.length === 3) return [[0, 1, 2]];
+  if (pts.length === 3 && holes.length === 0) return [[0, 1, 2]];
   const n = normal ?? polygonNormal(pts);
   const { u, v } = planeBasis(n);
-  const contour = pts.map((p) => new Vector2(p.dot(u), p.dot(v)));
-  const tris = ShapeUtils.triangulateShape(contour, []);
-  // ShapeUtils は CCW に揃えて返すため、元の向き（法線 n）と一致させる
+  const to2 = (p: Vector3) => new Vector2(p.dot(u), p.dot(v));
+  const all = [...pts, ...holes.flat()];
+  const tris = ShapeUtils.triangulateShape(pts.map(to2), holes.map((h) => h.map(to2)));
+  // 元の向き（法線 n）と一致させる
   return tris.map(([a, b, c]) => {
-    const ab = new Vector3().subVectors(pts[b], pts[a]);
-    const ac = new Vector3().subVectors(pts[c], pts[a]);
+    const ab = new Vector3().subVectors(all[b], all[a]);
+    const ac = new Vector3().subVectors(all[c], all[a]);
     return ab.cross(ac).dot(n) >= 0 ? [a, b, c] : [a, c, b];
   });
 }

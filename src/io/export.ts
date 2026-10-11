@@ -13,7 +13,6 @@ import {
 } from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
-import { polygonNormal, triangulate } from '../core/geometry';
 import type { Model } from '../core/Model';
 import type { GeoReference } from '../geo/GeoReference';
 import { FRONT_COLOR } from '../view/ModelRenderer';
@@ -46,14 +45,13 @@ export function buildExportScene(model: Model, opt: ExportSceneOptions): ExportS
   const normals = new Map<string, number[]>();
   for (const f of model.faces.values()) {
     if (!model.isLayerVisible(f.layer)) continue;
-    const pts = model.facePoints(f);
-    const n = polygonNormal(pts);
+    const { points: pts, tris, normal: n } = model.faceTriangles(f);
     if (n.lengthSq() === 0) continue;
     const color = opt.useLayerColors ? (model.layers.get(f.layer)?.color ?? FRONT_COLOR) : (f.color ?? FRONT_COLOR);
     if (!byColor.has(color)) (byColor.set(color, []), normals.set(color, []));
     const pos = byColor.get(color)!;
     const nrm = normals.get(color)!;
-    for (const tri of triangulate(pts, n)) {
+    for (const tri of tris) {
       for (const i of tri) {
         pos.push(pts[i].x, pts[i].y, pts[i].z);
         nrm.push(n.x, n.y, n.z);
@@ -153,7 +151,13 @@ export function exportOBJ(model: Model, geo: GeoReference, georef: boolean): str
   for (const f of model.faces.values()) {
     if (!model.isLayerVisible(f.layer)) continue;
     const arr = byLayer.get(f.layer) ?? [];
-    arr.push(`f ${f.loop.map((v) => index.get(v)).join(' ')}`);
+    if (f.holes?.length) {
+      // OBJ は穴を表せないので三角形に分割
+      const ids = [...f.loop, ...f.holes.flat()];
+      for (const tri of model.faceTriangles(f).tris) arr.push(`f ${tri.map((i) => index.get(ids[i])).join(' ')}`);
+    } else {
+      arr.push(`f ${f.loop.map((v) => index.get(v)).join(' ')}`);
+    }
     byLayer.set(f.layer, arr);
   }
   for (const [layer, faces] of byLayer) {
@@ -163,11 +167,12 @@ export function exportOBJ(model: Model, geo: GeoReference, georef: boolean): str
   // 面に使われていない単独の線
   const faceEdges = new Set<string>();
   for (const f of model.faces.values()) {
-    const L = f.loop;
-    for (let i = 0; i < L.length; i++) {
-      const a = L[i];
-      const b = L[(i + 1) % L.length];
-      faceEdges.add(a < b ? `${a}_${b}` : `${b}_${a}`);
+    for (const L of model.faceLoops(f)) {
+      for (let i = 0; i < L.length; i++) {
+        const a = L[i];
+        const b = L[(i + 1) % L.length];
+        faceEdges.add(a < b ? `${a}_${b}` : `${b}_${a}`);
+      }
     }
   }
   const loose = [...model.edges.values()].filter(
@@ -213,8 +218,8 @@ export function exportDXF(model: Model, geo: GeoReference, georef: boolean): str
   const pt = (p: Vector3) => enh(geo, p, georef);
   for (const f of model.faces.values()) {
     if (!model.isLayerVisible(f.layer)) continue;
-    const pts = model.facePoints(f);
-    for (const tri of triangulate(pts)) {
+    const { points: pts, tris } = model.faceTriangles(f);
+    for (const tri of tris) {
       const [a, b, c] = tri.map((i) => pt(pts[i]));
       w(0, '3DFACE');
       w(8, layerName(f.layer));

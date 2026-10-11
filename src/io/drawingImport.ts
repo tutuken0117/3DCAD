@@ -79,6 +79,10 @@ export function importDrawing(
         if (va !== vb) (model.addEdge(va, vb, layer), result.edges++);
       }
       const ids: number[] = [];
+      // 大きい領域から作ると、内側に独立した図形（柱・中庭など）は穴として刻み込まれる
+      const area = (r: [number, number][]) =>
+        Math.abs(r.reduce((s, p, i) => s + p[0] * r[(i + 1) % r.length][1] - r[(i + 1) % r.length][0] * p[1], 0));
+      regions.sort((a, b) => area(b) - area(a));
       for (const r of regions) {
         const id = model.addFace(
           r.map(([x, y]) => toLocal(x, y)),

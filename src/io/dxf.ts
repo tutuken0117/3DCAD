@@ -34,9 +34,12 @@ export function decodeDxf(buf: ArrayBuffer): string {
   // AC1021（AutoCAD 2007）以降は UTF-8
   if (ver >= 1021) return new TextDecoder('utf-8').decode(buf);
   if (m && /932/.test(m[1])) return new TextDecoder('shift_jis').decode(buf);
-  const utf8 = new TextDecoder('utf-8').decode(buf);
-  if (!utf8.includes('�')) return utf8;
-  return new TextDecoder('shift_jis').decode(buf);
+  // UTF-8 として正しく読めなければ Shift_JIS とみなす
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder('shift_jis').decode(buf);
+  }
 }
 
 interface Xform {

@@ -91,6 +91,7 @@ export class PushPullTool extends Tool {
     if (this.faceId === null) {
       const hit = this.app.renderer.pickFace(this.app.viewport.raycaster(e.clientX, e.clientY));
       if (!hit) return;
+      if (!this.editable(hit.faceId)) return;
       this.faceId = hit.faceId;
       this.start.copy(hit.point);
       this.normal.copy(hit.normal);
@@ -116,9 +117,16 @@ export class PushPullTool extends Tool {
     if (!this.lastDist) return;
     this.reset();
     const hit = this.app.renderer.pickFace(this.app.viewport.raycaster(e.clientX, e.clientY));
-    if (!hit) return;
+    if (!hit || !this.editable(hit.faceId)) return;
     this.faceId = hit.faceId;
     this.commit(this.lastDist);
+  }
+
+  /** 編集中の階層の面か（グループの面はダブルクリックで中に入ってから） */
+  private editable(faceId: number): boolean {
+    if (this.app.model.groupOfFace(faceId) === this.app.model.activeGroup) return true;
+    this.app.ui.toast('グループの面です。選択ツールでグループをダブルクリックして編集モードに入ってください');
+    return false;
   }
 
   private commit(d: number): void {
@@ -131,12 +139,14 @@ export class PushPullTool extends Tool {
   }
 
   onVcb(text: string): boolean {
-    const d = parseLength(text);
-    if (d === null) return false;
+    const typed = parseLength(text);
+    if (typed === null) return false;
     if (this.faceId !== null) {
-      this.commit(d);
+      // SketchUp と同じく、入力値はマウスで引いている向きに適用（押し込み中なら押し込み）
+      this.commit(this.dist < 0 ? -typed : typed);
       return true;
     }
+    const d = this.lastDist < 0 ? -typed : typed;
     // 押し出し直後なら、直前の押し出し量を修正（SketchUp と同じ）
     if (this.lastFace !== null && this.app.history.canUndo) {
       const face = this.lastFace;
@@ -196,8 +206,8 @@ export class MoveTool extends Tool {
     if (!this.base) {
       const inf = this.infer(e);
       if (this.app.selection.isEmpty) {
-        const ent = pickEntity(this.app, inf);
-        this.app.renderer.setHover(ent.face !== undefined ? [ent.face] : [], ent.edge !== undefined ? [ent.edge] : []);
+        const sel = this.app.expandPick(pickEntity(this.app, inf));
+        this.app.renderer.setHover(sel.faces, sel.edges);
       }
       return;
     }
@@ -213,17 +223,11 @@ export class MoveTool extends Tool {
     if (!this.base) {
       const inf = this.infer(e);
       if (this.app.selection.isEmpty) {
-        const ent = pickEntity(this.app, inf);
-        if (ent.face !== undefined) {
-          // 面を選んだら境界のエッジも一緒に動かす
-          const f = this.app.model.faces.get(ent.face)!;
-          const edges: number[] = [];
-          for (let i = 0; i < f.loop.length; i++) {
-            const id = this.app.model.findEdge(f.loop[i], f.loop[(i + 1) % f.loop.length]);
-            if (id !== undefined) edges.push(id);
-          }
-          this.app.selection.set(edges, [ent.face]);
-        } else if (ent.edge !== undefined) this.app.selection.set([ent.edge], []);
+        const sel = this.app.expandPick(pickEntity(this.app, inf));
+        // 面を選んだら境界のエッジも一緒に動かす
+        const edges = new Set(sel.edges);
+        for (const f of sel.faces) for (const id of this.app.model.faceEdgeIds(f)) edges.add(id);
+        if (sel.faces.length || sel.edges.length) this.app.selection.set(edges, sel.faces);
       }
       if (this.app.selection.isEmpty) {
         this.app.ui.toast('移動する物がありません');
@@ -417,18 +421,26 @@ export class EraserTool extends Tool {
     super.reset();
   }
 
-  private target(e: PointerEvent) {
+  /** 消す対象。グループは丸ごと */
+  private target(e: PointerEvent): { edges: number[]; faces: number[] } {
     const inf = this.app.inference.infer(e.clientX, e.clientY);
-    return pickEntity(this.app, inf);
+    const ent = pickEntity(this.app, inf);
+    const sel = this.app.expandPick(ent);
+    if (sel.group === this.app.model.activeGroup) {
+      // 同じ階層: エッジ優先、面だけをクリックしたら面だけ
+      return ent.edge !== undefined ? { edges: [ent.edge], faces: [] } : { edges: [], faces: sel.faces };
+    }
+    return sel;
   }
 
   onPointerMove(e: PointerEvent): void {
     const t = this.target(e);
     if (this.erasing) {
-      if (t.edge !== undefined) this.edges.add(t.edge);
+      t.edges.forEach((id) => this.edges.add(id));
+      if (t.edges.length > 1) t.faces.forEach((id) => this.faces.add(id));
       this.app.renderer.setHover([...this.faces], [...this.edges]);
     } else {
-      this.app.renderer.setHover(t.face !== undefined ? [t.face] : [], t.edge !== undefined ? [t.edge] : []);
+      this.app.renderer.setHover(t.faces, t.edges);
     }
   }
 
@@ -436,8 +448,8 @@ export class EraserTool extends Tool {
     if (e.button !== 0) return;
     this.erasing = true;
     const t = this.target(e);
-    if (t.edge !== undefined) this.edges.add(t.edge);
-    else if (t.face !== undefined) this.faces.add(t.face);
+    t.edges.forEach((id) => this.edges.add(id));
+    t.faces.forEach((id) => this.faces.add(id));
   }
 
   onPointerUp(): void {
@@ -477,7 +489,10 @@ export class PaintTool extends Tool {
       return;
     }
     const color = this.app.ui.paintColor;
-    const ids = this.app.selection.faces.has(hit.faceId) ? [...this.app.selection.faces] : [hit.faceId];
+    // 選択中の面ならまとめて、グループの面ならグループ全体を塗る
+    const ids = this.app.selection.faces.has(hit.faceId)
+      ? [...this.app.selection.faces]
+      : this.app.expandPick({ face: hit.faceId }).faces;
     for (const id of ids) {
       const f = m.faces.get(id);
       if (f) f.color = color;

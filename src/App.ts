@@ -8,7 +8,7 @@ import { parseDxf, decodeDxf } from './io/dxf';
 import type { Drawing2D } from './io/drawing2d';
 import { extrudeLayer, importDrawing } from './io/drawingImport';
 import { downloadBlob, exportDXF, exportGLB, exportOBJ, exportUSDZ } from './io/export';
-import { parsePointCloud, detectPointCloudFormat } from './io/pointcloud';
+import { parsePointCloud, parseTextPoints, detectPointCloudFormat } from './io/pointcloud';
 import {
   clearAutosave,
   loadAutosave,
@@ -91,6 +91,10 @@ export class App {
     this.setTool('select');
 
     this.history.onChange(() => this.scheduleAutosave());
+    this.model.onChange(() => {
+      const g = this.model.activeGroup;
+      this.ui.setContext(g ? (this.model.groups.get(g)?.name ?? null) : null);
+    });
     this.geo.onChange(() => this.scheduleAutosave());
     this.underlays.onChange(() => this.scheduleAutosave());
   }
@@ -170,9 +174,16 @@ export class App {
       if (k === 's') return (e.preventDefault(), this.saveProject());
       if (k === 'o') return (e.preventDefault(), this.ui.pickFile('open'));
       if (k === 'a' && !inInput) return (e.preventDefault(), this.selection.selectAll());
+      if (k === 'g' && !e.shiftKey) return (e.preventDefault(), this.makeGroupFromSelection());
+      if (k === 'g' && e.shiftKey) return (e.preventDefault(), this.explodeSelectedGroup());
     }
     if (inInput) return;
 
+    // 選択ツールで Esc → グループの編集を終了
+    if (e.key === 'Escape' && this.tool.def.id === 'select' && this.model.activeGroup) {
+      this.exitGroup();
+      return;
+    }
     // ツール固有のキー（Esc、矢印、Shift、Ctrl など）
     if (this.tool.onKeyDown(e)) {
       e.preventDefault();
@@ -255,6 +266,75 @@ export class App {
     this.history.commit('押し出し');
   }
 
+  // ------------------------------------------------------------------
+  // グループ
+  // ------------------------------------------------------------------
+
+  /**
+   * クリックした要素を、今の編集階層での選択単位に広げる。
+   * 編集中の階層の外にあるグループは丸ごと 1 つとして扱う。
+   */
+  expandPick(ent: { edge?: number; face?: number }): { edges: number[]; faces: number[]; group: number } {
+    const m = this.model;
+    const g = ent.face !== undefined ? m.groupOfFace(ent.face) : ent.edge !== undefined ? m.groupOfEdge(ent.edge) : -1;
+    if (g < 0) return { edges: [], faces: [], group: 0 };
+    if (g === m.activeGroup) {
+      return { edges: ent.edge !== undefined ? [ent.edge] : [], faces: ent.face !== undefined ? [ent.face] : [], group: g };
+    }
+    if (g !== 0) return { ...m.groupEntities(g), group: g };
+    // グループ編集中に外側（グループ外）のものは選べない
+    return { edges: [], faces: [], group: 0 };
+  }
+
+  /** 選択中のものがすべて 1 つのグループなら、その ID */
+  selectedGroup(): number | undefined {
+    const m = this.model;
+    const gs = new Set<number>();
+    for (const id of this.selection.faces) gs.add(m.groupOfFace(id));
+    for (const id of this.selection.edges) gs.add(m.groupOfEdge(id));
+    if (gs.size !== 1) return undefined;
+    const g = [...gs][0];
+    return g && g !== m.activeGroup ? g : undefined;
+  }
+
+  makeGroupFromSelection(): void {
+    if (this.selection.isEmpty) return this.ui.toast('グループにする物を選択してください');
+    if (this.model.activeGroup) return this.ui.toast('グループの中でさらにグループを作ることはまだできません');
+    const gid = this.model.makeGroup(this.selection.edges, this.selection.faces);
+    if (gid === undefined) return;
+    this.history.commit('グループ作成');
+    const ents = this.model.groupEntities(gid);
+    this.selection.set(ents.edges, ents.faces);
+    this.ui.toast('グループにしました。ダブルクリックで中を編集できます');
+  }
+
+  explodeSelectedGroup(): void {
+    const g = this.selectedGroup();
+    if (!g) return;
+    this.model.explodeGroup(g);
+    this.history.commit('グループ分解');
+    this.selection.clear();
+  }
+
+  enterGroup(gid: number): void {
+    if (!this.model.groups.has(gid)) return;
+    this.tool.reset();
+    this.model.activeGroup = gid;
+    this.selection.clear();
+    this.model.emitChange();
+    this.ui.setContext(this.model.groups.get(gid)!.name);
+  }
+
+  exitGroup(): void {
+    if (!this.model.activeGroup) return;
+    const gid = this.model.activeGroup;
+    this.model.activeGroup = 0;
+    const ents = this.model.groupEntities(gid);
+    this.selection.set(ents.edges, ents.faces);
+    this.model.emitChange();
+    this.ui.setContext(null);
+  }
+
   extrudeLayer(layer: string, height: number): void {
     const n = extrudeLayer(this.model, layer, height);
     this.history.commit(`レイヤー押し出し: ${layer}`);
@@ -294,8 +374,8 @@ export class App {
     }
   }
 
-  newProject(): void {
-    if (!this.model.isEmpty() && !confirm('現在のモデルを破棄して新規作成しますか？')) return;
+  async newProject(): Promise<void> {
+    if (!this.model.isEmpty() && !(await this.ui.confirm('新規作成', '現在のモデルを破棄して新規作成しますか？', '新規作成'))) return;
     this.tool.reset();
     this.model.clear();
     for (const c of [...this.pointClouds.clouds]) this.pointClouds.remove(c);
@@ -358,7 +438,11 @@ export class App {
   saveProject(): void {
     const json = JSON.stringify(this.toProjectFile());
     downloadBlob(new Blob([json], { type: 'application/json' }), `${this.projectName}${PROJECT_EXT}`);
-    this.ui.toast('プロジェクトを保存しました');
+    this.ui.toast(
+      window.top !== window
+        ? 'この埋め込み表示ではファイルを保存できない場合があります（作業はブラウザ内に自動保存されます）'
+        : 'プロジェクトを保存しました',
+    );
   }
 
   private scheduleAutosave(): void {
@@ -375,6 +459,39 @@ export class App {
     if (await this.ui.confirm('前回の作業を復元', `${when} に自動保存されたデータがあります。復元しますか？`, '復元する', '新規で始める')) {
       await this.loadProjectFile(p);
       this.zoomExtents();
+    }
+  }
+
+  // ---- サンプル ----
+
+  /** サンプルの配置図（公共座標の DXF）と点群を読み込んで立体化する */
+  async loadSample(): Promise<void> {
+    try {
+      this.ui.toast('サンプルを読み込んでいます…');
+      const [dxfBuf, xyzText] = await Promise.all([
+        fetch('./sample_plan_jgd2011_9kei.dxf').then((r) => r.arrayBuffer()),
+        fetch('./sample_ground_jgd2011_9kei.xyz').then((r) => r.text()),
+      ]);
+      this.tool.reset();
+      this.geo.setZone(9);
+      const drawing = parseDxf(decodeDxf(dxfBuf));
+      importDrawing(this.model, this.geo, drawing, {
+        unitToMeters: 1,
+        georeferenced: true,
+        elevation: 12,
+        layers: new Set(drawing.layers.map((l) => l.name)),
+        faceLayers: new Set(['建物外形', '擁壁']),
+      });
+      extrudeLayer(this.model, '建物外形', 6);
+      extrudeLayer(this.model, '擁壁', 1.2);
+      this.history.commit('サンプル読み込み');
+      const raw = parseTextPoints(xyzText);
+      this.pointClouds.add('サンプル地盤点群.xyz', raw, { georeferenced: true, axisOrder: 'EN' });
+      this.ui.refreshAll();
+      this.zoomExtents();
+      this.ui.toast('サンプル: 公共座標（第9系）の配置図を 6m で押し出し、地盤の点群と重ねました', 7000);
+    } catch (err) {
+      this.ui.alert('サンプルを読み込めません', String((err as Error).message ?? err));
     }
   }
 

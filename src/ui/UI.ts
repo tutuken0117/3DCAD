@@ -59,6 +59,7 @@ export class UI {
   private modalOpen = 0;
   private fileInput!: HTMLInputElement;
   private undoBtn!: HTMLButtonElement;
+  private contextEl!: HTMLDivElement;
   private redoBtn!: HTMLButtonElement;
 
   constructor(
@@ -89,6 +90,8 @@ export class UI {
             <button data-act="import-drawing">発注図面（DXF / SXF）…</button>
             <button data-act="import-underlay">下図（PDF / 画像）…</button>
             <button data-act="import-pc">点群（LAS / PLY / XYZ / CSV）…</button>
+            <hr>
+            <button data-act="sample">サンプル（配置図＋点群）を開く</button>
           </div>
         </div>
         <div class="dropdown">
@@ -209,6 +212,10 @@ export class UI {
     status.append(this.hintEl, this.coordEl, vcb);
     this.root.appendChild(status);
 
+    this.contextEl = h('div', { class: 'context-banner' });
+    this.contextEl.addEventListener('click', () => app.exitGroup());
+    this.viewportEl.appendChild(this.contextEl);
+
     this.toastEl = h('div', { class: 'toast' });
     this.root.appendChild(this.toastEl);
 
@@ -225,7 +232,8 @@ export class UI {
       const b = (e.target as HTMLElement).closest('button');
       if (!b) return;
       const act = b.dataset.act;
-      if (act === 'new') app.newProject();
+      if (act === 'new') void app.newProject();
+      if (act === 'sample') void app.loadSample();
       if (act === 'open') this.pickFile('open');
       if (act === 'save') app.saveProject();
       if (act === 'import-drawing') this.pickFile('drawing');
@@ -304,6 +312,14 @@ export class UI {
     const geo = this.app.geo;
     const pub = geo.toPublic(p);
     this.coordEl.innerHTML = `<span title="公共座標（平面直角座標 第${geo.zone}系）">X ${formatCoord(pub.X)}　Y ${formatCoord(pub.Y)}　H ${formatCoord(pub.H)}</span>`;
+  }
+
+  /** グループ編集中の表示（null で非表示） */
+  setContext(groupName: string | null): void {
+    if (!this.contextEl) return;
+    this.contextEl.style.display = groupName ? 'block' : 'none';
+    this.contextEl.textContent = groupName ? `グループ「${groupName}」を編集中 — ここをクリックか Esc で終了` : '';
+    this.app.tool?.updateStatus();
   }
 
   setActiveTool(id: string): void {
@@ -519,6 +535,7 @@ export class UI {
           <dt>面</dt><dd>${model.faces.size.toLocaleString()}</dd>
           <dt>エッジ</dt><dd>${model.edges.size.toLocaleString()}</dd>
           <dt>レイヤー</dt><dd>${model.layers.size}</dd>
+          <dt>グループ</dt><dd>${model.groups.size}</dd>
         </dl>
         <p class="muted">選択ツール（スペースキー）で面やエッジをクリックすると、ここに情報が表示されます。</p>
         <h3>表示単位</h3>
@@ -540,7 +557,19 @@ export class UI {
       if (e) len += model.pos(e.a).distanceTo(model.pos(e.b));
     }
     const layerOpts = [...model.layers.keys()].map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    const gid = this.app.selectedGroup();
+    const group = gid ? model.groups.get(gid) : undefined;
     body.innerHTML = `
+      ${
+        group
+          ? `<h3>グループ</h3>
+        <div class="row"><input data-gname value="${esc(group.name)}"><button data-grename>名前を変更</button></div>
+        <div class="row"><button data-genter class="primary">中を編集</button><button data-gexplode>グループ解除</button></div>
+        <p class="muted">グループは他の物とくっつきません。中を編集するにはダブルクリック。</p>`
+          : model.activeGroup
+            ? ''
+            : `<div class="row"><button data-gmake>グループにする（Ctrl+G）</button></div>`
+      }
       <h3>選択中</h3>
       <dl class="kv">
         <dt>面</dt><dd>${selection.faces.size}</dd>
@@ -581,6 +610,15 @@ export class UI {
       this.app.history.commit('レイヤー変更');
     });
     body.querySelector('[data-delete]')!.addEventListener('click', () => this.app.deleteSelection());
+    body.querySelector('[data-gmake]')?.addEventListener('click', () => this.app.makeGroupFromSelection());
+    body.querySelector('[data-gexplode]')?.addEventListener('click', () => this.app.explodeSelectedGroup());
+    body.querySelector('[data-genter]')?.addEventListener('click', () => gid && this.app.enterGroup(gid));
+    body.querySelector('[data-grename]')?.addEventListener('click', () => {
+      const name = body.querySelector<HTMLInputElement>('[data-gname]')!.value.trim();
+      if (!group || !name) return;
+      group.name = name;
+      this.app.history.commit('グループ名の変更');
+    });
   }
 
   private renderLayers(body: HTMLDivElement): void {
@@ -792,12 +830,18 @@ export class UI {
         <tr><td>T / I</td><td>メジャー / 座標</td></tr>
         <tr><td>E / B</td><td>消しゴム / ペイント</td></tr>
         <tr><td>O / H</td><td>オービット / パン（トラックパッド用）</td></tr>
+        <tr><td>Ctrl+G / Ctrl+Shift+G</td><td>グループ化 / グループ解除</td></tr>
+        <tr><td>ダブルクリック（グループ）</td><td>グループの中を編集（Esc で終了）</td></tr>
         <tr><td>Shift+Z</td><td>全体表示</td></tr>
         <tr><td>Ctrl+Z / Ctrl+Y</td><td>元に戻す / やり直し</td></tr>
         <tr><td>Esc</td><td>操作の取り消し</td></tr>
         <tr><td>→ ← ↑</td><td>赤(東西) / 緑(南北) / 青(高さ) 方向にロック</td></tr>
         <tr><td>Shift（作図中）</td><td>今の方向にロック</td></tr>
       </table>
+      <h3>穴・開口のあけ方</h3>
+      <p class="muted">面の内側に長方形（R）や円（C）を描くと、その部分が面に刻み込まれます。プッシュ/プルで押し込むと凹み、反対側の面まで押し込む（壁の厚さぶん）と貫通して開口になります。引き出すと出っ張りになります。</p>
+      <h3>グループ</h3>
+      <p class="muted">選択して Ctrl+G でグループにすると、他の物とくっつかず、まとめて移動・コピーできます。ダブルクリックで中を編集します。</p>
       <h3>寸法の入力</h3>
       <p class="muted">作図中にそのまま数字を打って Enter（右下の欄に入ります）。単位は mm。「1.5m」のように単位も付けられます。長方形は「3000,2000」。プッシュ/プル直後に数字を打つと押し出し量を修正できます。</p>
       <h3>推定（スナップ）の色</h3>

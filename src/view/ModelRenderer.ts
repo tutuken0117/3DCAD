@@ -13,7 +13,6 @@ import {
   type Raycaster,
   Vector3,
 } from 'three';
-import { polygonNormal, triangulate } from '../core/geometry';
 import type { Model } from '../core/Model';
 import type { Selection } from '../core/Selection';
 import type { Viewport } from './Viewport';
@@ -31,6 +30,7 @@ export class ModelRenderer {
   private front: Mesh;
   private back: Mesh;
   private edges: LineSegments;
+  private fadedEdges: LineSegments;
   private selFaces: Mesh;
   private selEdges: LineSegments;
   private hoverFaces: Mesh;
@@ -63,6 +63,7 @@ export class ModelRenderer {
     this.front = new Mesh(new BufferGeometry(), frontMat);
     this.back = new Mesh(new BufferGeometry(), backMat);
     this.edges = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 0x1a1a1a }));
+    this.fadedEdges = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 0xa9b3bd }));
 
     const overlayFace = (color: number, opacity: number) =>
       new Mesh(
@@ -85,7 +86,7 @@ export class ModelRenderer {
     this.selEdges.renderOrder = 10;
     this.hoverEdges.renderOrder = 9;
 
-    viewport.modelRoot.add(this.front, this.back, this.edges, this.hoverFaces, this.selFaces, this.hoverEdges, this.selEdges);
+    viewport.modelRoot.add(this.front, this.back, this.edges, this.fadedEdges, this.hoverFaces, this.selFaces, this.hoverEdges, this.selEdges);
 
     model.onChange(() => this.rebuild());
     selection.onChange(() => this.rebuildSelection());
@@ -114,14 +115,17 @@ export class ModelRenderer {
     const nrm: number[] = [];
     this.triFace = [];
     const c = new Color();
+    // グループ編集中は、編集対象以外を薄く表示する
+    const fade = new Color('#e9eef2');
+    const editing = m.activeGroup;
     for (const f of m.faces.values()) {
       if (!m.isLayerVisible(f.layer)) continue;
-      const pts = m.facePoints(f);
-      const n = polygonNormal(pts);
+      const { points: pts, tris, normal: n } = m.faceTriangles(f);
       if (n.lengthSq() === 0) continue;
       const colorStr = this.faceStyle === 'layer' ? (m.layers.get(f.layer)?.color ?? FRONT_COLOR) : (f.color ?? FRONT_COLOR);
       c.set(colorStr);
-      for (const tri of triangulate(pts, n)) {
+      if (editing && m.groupOfFace(f) !== editing) c.lerp(fade, 0.65);
+      for (const tri of tris) {
         for (const i of tri) {
           pos.push(pts[i].x, pts[i].y, pts[i].z);
           nrm.push(n.x, n.y, n.z);
@@ -144,18 +148,20 @@ export class ModelRenderer {
     for (const f of m.faces.values()) {
       if (!m.isLayerVisible(f.layer)) continue;
       const n = m.faceNormal(f);
-      const L = f.loop;
-      for (let i = 0; i < L.length; i++) {
-        const a = L[i];
-        const b = L[(i + 1) % L.length];
-        const k = a < b ? `${a}_${b}` : `${b}_${a}`;
-        const arr = facesByEdge.get(k);
-        if (arr) arr.push(n);
-        else facesByEdge.set(k, [n]);
+      for (const L of m.faceLoops(f)) {
+        for (let i = 0; i < L.length; i++) {
+          const a = L[i];
+          const b = L[(i + 1) % L.length];
+          const k = a < b ? `${a}_${b}` : `${b}_${a}`;
+          const arr = facesByEdge.get(k);
+          if (arr) arr.push(n);
+          else facesByEdge.set(k, [n]);
+        }
       }
     }
     const SOFT = Math.cos((25 * Math.PI) / 180);
     const ep: number[] = [];
+    const fp: number[] = [];
     for (const e of m.edges.values()) {
       if (!m.isLayerVisible(e.layer)) continue;
       const k = e.a < e.b ? `${e.a}_${e.b}` : `${e.b}_${e.a}`;
@@ -166,12 +172,16 @@ export class ModelRenderer {
       }
       const a = m.pos(e.a);
       const b = m.pos(e.b);
-      ep.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      (editing && m.groupOfEdge(e) !== editing ? fp : ep).push(a.x, a.y, a.z, b.x, b.y, b.z);
     }
     const eg = new BufferGeometry();
     eg.setAttribute('position', new Float32BufferAttribute(ep, 3));
     this.edges.geometry.dispose();
     this.edges.geometry = eg;
+    const fg = new BufferGeometry();
+    fg.setAttribute('position', new Float32BufferAttribute(fp, 3));
+    this.fadedEdges.geometry.dispose();
+    this.fadedEdges.geometry = fg;
 
     this.rebuildSelection();
     this.viewport.requestRender();
@@ -181,10 +191,9 @@ export class ModelRenderer {
     const m = this.model;
     const pos: number[] = [];
     for (const id of faceIds) {
-      const f = m.faces.get(id);
-      if (!f) continue;
-      const pts = m.facePoints(f);
-      for (const tri of triangulate(pts)) for (const i of tri) pos.push(pts[i].x, pts[i].y, pts[i].z);
+      if (!m.faces.has(id)) continue;
+      const { points: pts, tris } = m.faceTriangles(id);
+      for (const tri of tris) for (const i of tri) pos.push(pts[i].x, pts[i].y, pts[i].z);
     }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));

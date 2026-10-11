@@ -102,10 +102,16 @@ export abstract class Tool {
   /** モデル上の頂点を取得（エッジ上なら分割して頂点を作る） */
   protected vertexAt(inf: InferenceResult): number {
     const m = this.app.model;
-    if (inf.vertexId !== undefined && m.vertices.has(inf.vertexId)) return inf.vertexId;
+    // 別のグループの点にスナップした場合は、位置だけ使って今の階層に頂点を作る（くっつかない）
+    if (inf.vertexId !== undefined && m.vertices.has(inf.vertexId) && m.groupOf(inf.vertexId) === m.activeGroup) return inf.vertexId;
     const existing = m.findVertex(inf.point);
     if (existing !== undefined) return existing;
-    if ((inf.type === 'onEdge' || inf.type === 'midpoint') && inf.edgeId !== undefined && m.edges.has(inf.edgeId)) {
+    if (
+      (inf.type === 'onEdge' || inf.type === 'midpoint') &&
+      inf.edgeId !== undefined &&
+      m.edges.has(inf.edgeId) &&
+      m.groupOfEdge(inf.edgeId) === m.activeGroup
+    ) {
       return m.splitEdge(inf.edgeId, inf.point);
     }
     return m.addVertex(inf.point);

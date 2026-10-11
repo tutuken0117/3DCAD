@@ -1,6 +1,7 @@
 // 古めのブラウザ（タブレット・現場の PC）でも動くよう、ポリフィル入りの legacy ビルドを使う
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+// 圧縮版は制御文字をそのまま含むため、配信しやすい非圧縮版を使う
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import type { UnderlayData } from '../view/UnderlayManager';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;

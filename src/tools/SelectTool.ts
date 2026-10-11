@@ -17,7 +17,9 @@ export class SelectTool extends Tool {
   }
 
   hint(): string {
-    return 'クリックで選択（Shift で追加/解除）。ダブルクリックで面と境界、トリプルクリックでつながった全体。ドラッグで範囲選択（左→右: 完全に囲む / 右→左: 一部でも）';
+    return this.app.model.activeGroup
+      ? 'グループを編集中。外側をクリックするか Esc で編集を終了します'
+      : 'クリックで選択（Shift で追加/解除）。ダブルクリックで面と境界（グループなら中を編集）、トリプルクリックでつながった全体。ドラッグで範囲選択。Ctrl+G でグループ化';
   }
 
   reset(): void {
@@ -45,8 +47,8 @@ export class SelectTool extends Tool {
     }
     const inf = this.app.inference.infer(e.clientX, e.clientY);
     this.app.ui.setCursorPosition(inf.point);
-    const ent = pickEntity(this.app, inf);
-    this.app.renderer.setHover(ent.face !== undefined ? [ent.face] : [], ent.edge !== undefined ? [ent.edge] : []);
+    const sel = this.app.expandPick(pickEntity(this.app, inf));
+    this.app.renderer.setHover(sel.faces, sel.edges);
   }
 
   onPointerDown(e: PointerEvent): void {
@@ -75,23 +77,37 @@ export class SelectTool extends Tool {
     const m = app.model;
     const inf = app.inference.infer(e.clientX, e.clientY);
     const ent = pickEntity(app, inf);
-    if (ent.edge === undefined && ent.face === undefined) {
+    let sel = app.expandPick(ent);
+    // グループ編集中に外側をクリック → 編集を終了
+    if (m.activeGroup && sel.group !== m.activeGroup) {
+      app.exitGroup();
+      sel = app.expandPick(ent);
+    }
+    if (!sel.edges.length && !sel.faces.length) {
       if (!e.shiftKey) app.selection.clear();
       return;
     }
-    let edges: number[] = ent.edge !== undefined ? [ent.edge] : [];
-    let faces: number[] = ent.face !== undefined ? [ent.face] : [];
+    // 編集階層の外のグループ: ダブルクリックで中に入る
+    if (sel.group !== m.activeGroup) {
+      if (clicks >= 2) {
+        app.enterGroup(sel.group);
+        if (ent.face !== undefined) app.selection.set([], [ent.face]);
+        else if (ent.edge !== undefined) app.selection.set([ent.edge], []);
+        return;
+      }
+      if (e.shiftKey) app.selection.toggle(sel.edges, sel.faces);
+      else app.selection.set(sel.edges, sel.faces);
+      return;
+    }
+    let edges = sel.edges;
+    let faces = sel.faces;
     if (clicks >= 3) {
       const c = m.connectedFrom(edges, faces);
       edges = [...c.edges];
       faces = [...c.faces];
     } else if (clicks === 2) {
       if (ent.face !== undefined) {
-        const L = m.faces.get(ent.face)!.loop;
-        for (let i = 0; i < L.length; i++) {
-          const id = m.findEdge(L[i], L[(i + 1) % L.length]);
-          if (id !== undefined) edges.push(id);
-        }
+        edges = m.faceEdgeIds(ent.face);
       } else if (ent.edge !== undefined) {
         const ed = m.edges.get(ent.edge)!;
         faces = m.facesOfEdge(ed.a, ed.b).map((f) => f.id);
@@ -125,10 +141,21 @@ export class SelectTool extends Tool {
       return r;
     };
     const test = (vs: number[]) => (crossing ? vs.some(isIn) : vs.every(isIn));
-    const edges: number[] = [];
-    const faces: number[] = [];
-    for (const e of m.edges.values()) if (m.isLayerVisible(e.layer) && test([e.a, e.b])) edges.push(e.id);
-    for (const f of m.faces.values()) if (m.isLayerVisible(f.layer) && test(f.loop)) faces.push(f.id);
+    const edges = new Set<number>();
+    const faces = new Set<number>();
+    // 編集中の階層の要素は個別に、それ以外のグループは丸ごと選ぶ
+    for (const e of m.edges.values()) {
+      if (!m.isLayerVisible(e.layer) || !test([e.a, e.b])) continue;
+      const s = app.expandPick({ edge: e.id });
+      s.edges.forEach((id) => edges.add(id));
+      s.faces.forEach((id) => faces.add(id));
+    }
+    for (const f of m.faces.values()) {
+      if (!m.isLayerVisible(f.layer) || !test(f.loop)) continue;
+      const s = app.expandPick({ face: f.id });
+      s.edges.forEach((id) => edges.add(id));
+      s.faces.forEach((id) => faces.add(id));
+    }
     if (add) app.selection.add(edges, faces);
     else app.selection.set(edges, faces);
   }
