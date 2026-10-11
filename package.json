@@ -1,0 +1,26 @@
+{
+  "name": "3dcad",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SketchUp風の操作で使える、公共座標・点群・AR対応のブラウザ3D CAD",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dxf-parser": "^1.1.2",
+    "pdfjs-dist": "^6.4.299",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.186.0",
+    "typescript": "5.9",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}
