@@ -56,9 +56,10 @@ export class Viewport {
   private needsRender = true;
 
   constructor(readonly container: HTMLElement) {
-    this.renderer = new WebGLRenderer({ antialias: true, logarithmicDepthBuffer: false });
+    // alpha: AR（WebXR）でカメラ映像を背景に透かすため
+    this.renderer = new WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(new Color('#e9eef2'));
+    this.renderer.setClearColor(new Color('#e9eef2'), 1);
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.tabIndex = 0;
 

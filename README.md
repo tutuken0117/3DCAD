@@ -22,6 +22,10 @@ SketchUp のような感覚的な操作で、**発注図面（2D）から 3D モ
 
 ## 使い方
 
+**公開版: https://tutuken0117.github.io/3DCAD/** （HTTPS なので、スマホで開けば AR も使えます）
+
+このブランチに push すると GitHub Actions（`.github/workflows/pages.yml`）がテスト・ビルドして自動で公開します。
+
 すぐ試すには「読み込み → サンプル（配置図＋点群）を開く」を選んでください。
 
 ```bash
@@ -31,7 +35,7 @@ npm run build      # dist/ に静的ファイルを出力（どの Web サーバ
 npm test           # 単体テスト
 ```
 
-> **AR を Android で使うには HTTPS が必要です。** `dist/` を HTTPS のサーバー（GitHub Pages など）に置いて開いてください。iPhone の AR Quick Look は HTTP でも動きます。
+> **AR には HTTPS が必要です。** 上の GitHub Pages の URL をスマホで開いてください（iPhone / iPad は Safari、Android は Chrome + ARCore 対応端末）。
 
 ### 発注図面から 3D を作る流れ
 
