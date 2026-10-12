@@ -25,7 +25,7 @@ const MARKER_COLORS: Record<string, number> = {
   onEdge: 0xe0301e,
   onFace: 0x2a64d8,
   pointcloud: 0xff8c00,
-  underlay: 0x8a5cd6,
+  onSheet: 0x8a5cd6,
   axis: 0x000000,
   locked: 0x000000,
   ground: 0x666666,
@@ -110,6 +110,7 @@ export class Overlay {
       (this.marker.material as PointsMaterial).color.setHex(MARKER_COLORS[inf.type] ?? 0x000000);
     }
     let label = INFERENCE_LABEL[inf.type];
+    if (inf.sheet && label) label = `図面の${label}`;
     if (inf.type === 'axis' && inf.axis) label = { x: '赤い軸上（東西）', y: '青い軸上（高さ）', z: '緑の軸上（南北）' }[inf.axis];
     if (label && clientX !== undefined && clientY !== undefined) {
       const p = this.viewport.toCanvas(clientX, clientY);

@@ -17,6 +17,8 @@ export const ICONS: Record<string, string> = {
   orbit: wrap('<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="M19 9l2 3-3 1"/>'),
   pan: wrap('<path d="M8 13V6a1.5 1.5 0 0 1 3 0v6M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.5L8 13"/>'),
   underlay: wrap('<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/>'),
+  profile: wrap('<path d="M3 17l6 3 12-5-6-3z" fill="currentColor" fill-opacity=".12"/><path d="M9 20V11l6-4 6 3v5M9 11l-6-2v8M15 7l-6-2-6 4"/>'),
+  sheet: wrap('<rect x="4" y="3" width="13" height="17" rx="1"/><path d="M7 7h7M7 10h7M7 13h4M17 8l3 1v12l-11-1"/>'),
   undo: wrap('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
   redo: wrap('<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>'),
   ar: wrap('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M12 7l4 2.5v5L12 17l-4-2.5v-5z"/>'),

@@ -89,12 +89,14 @@ export class Viewport {
   /**
    * マウスの割り当て。
    *  default: 左=ツール, 中=オービット(Shift+中=パン), 右=パン
-   *  orbit / pan: 左ドラッグでも視点操作（トラックパッド用）
+   *  orbit / pan: 左ドラッグ・1 本指でも視点操作（トラックパッド・タブレット用）
    */
   setNavigationMode(mode: 'default' | 'orbit' | 'pan'): void {
     const left = mode === 'orbit' ? MOUSE.ROTATE : mode === 'pan' ? MOUSE.PAN : (null as unknown as MOUSE);
     this.controls.mouseButtons = { LEFT: left, MIDDLE: MOUSE.ROTATE, RIGHT: MOUSE.PAN };
-    this.controls.touches = { ONE: mode === 'pan' ? TOUCH.PAN : TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN };
+    // タッチ: 1 本指はツール操作（オービット/パンツールのときは視点操作）、2 本指でズーム・パン
+    const one = mode === 'orbit' ? TOUCH.ROTATE : mode === 'pan' ? TOUCH.PAN : (null as unknown as TOUCH);
+    this.controls.touches = { ONE: one, TWO: TOUCH.DOLLY_PAN };
   }
 
   private setupLights(): void {

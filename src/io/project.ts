@@ -1,6 +1,6 @@
 import type { ModelData } from '../core/Model';
 import type { GeoReferenceData } from '../geo/GeoReference';
-import type { UnderlayData } from '../view/UnderlayManager';
+import type { SheetData, sheetFromLegacyUnderlay } from '../view/SheetManager';
 import type { AxisOrder } from '../view/PointCloudManager';
 
 export const PROJECT_EXT = '.3dcad.json';
@@ -12,7 +12,10 @@ export interface ProjectFile {
   savedAt: string;
   model: ModelData;
   geo: GeoReferenceData;
-  underlays: UnderlayData[];
+  /** 図面シート（平面図・立面図・断面図） */
+  sheets?: SheetData[];
+  /** 旧形式の下図（読み込み時に図面シートへ変換） */
+  underlays?: Parameters<typeof sheetFromLegacyUnderlay>[0][];
   /** 点群はサイズが大きいので参照情報のみ保存（開くときに再読み込み） */
   pointClouds: { name: string; georeferenced: boolean; axisOrder: AxisOrder; count: number }[];
   camera?: { position: number[]; target: number[] };

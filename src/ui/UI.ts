@@ -6,6 +6,9 @@ import { ZONES, formatDms } from '../geo/jprcs';
 import type { DrawingImportOptions } from '../io/drawingImport';
 import type { Drawing2D } from '../io/drawing2d';
 import type { PointColorMode } from '../view/PointCloudManager';
+import { VIEW_ANGLE, VIEW_LABEL, type SheetView } from '../view/SheetManager';
+import type { SheetAdjustMode } from '../tools/MiscTools';
+import type { SheetLineOptions } from '../io/sheetImport';
 import type { FaceStyle } from '../view/ModelRenderer';
 import type { StandardView } from '../view/Viewport';
 import { ICONS } from './icons';
@@ -24,7 +27,7 @@ export interface FormOptions {
   cancelLabel?: string;
 }
 
-type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'underlays' | 'help';
+type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'sheets' | 'help';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -80,6 +83,7 @@ export class UI {
     const header = h('header', { class: 'topbar' });
     header.innerHTML = `
       <div class="brand">3DCAD <small>β</small></div>
+      <button class="panel-toggle icon" data-act="panel" title="パネルを開く/閉じる">☰</button>
       <div class="menu">
         <button data-act="new">新規</button>
         <button data-act="open">開く</button>
@@ -87,11 +91,11 @@ export class UI {
         <div class="dropdown">
           <button class="primary">読み込み ▾</button>
           <div class="dropdown-menu">
-            <button data-act="import-drawing">発注図面（DXF / SXF）…</button>
-            <button data-act="import-underlay">下図（PDF / 画像）…</button>
+            <button data-act="import-sheet">図面（平面図・立面図・断面図）… <small>DXF / SXF / PDF / 画像</small></button>
             <button data-act="import-pc">点群（LAS / PLY / XYZ / CSV）…</button>
             <hr>
-            <button data-act="sample">サンプル（配置図＋点群）を開く</button>
+            <button data-act="sample-house">サンプル: 住宅（平面図＋立面図 → 立体）</button>
+            <button data-act="sample">サンプル: 配置図＋点群（公共座標）</button>
           </div>
         </div>
         <div class="dropdown">
@@ -139,7 +143,7 @@ export class UI {
     const groups = [
       ['select'],
       ['line', 'rect', 'circle'],
-      ['pushpull', 'move', 'rotate'],
+      ['pushpull', 'profile', 'move', 'rotate'],
       ['tape', 'eraser', 'paint', 'coord'],
       ['orbit', 'pan'],
     ];
@@ -171,7 +175,7 @@ export class UI {
       ['layers', 'レイヤー'],
       ['geo', '座標系'],
       ['pointclouds', '点群'],
-      ['underlays', '下図'],
+      ['sheets', '図面'],
       ['help', '使い方'],
     ];
     for (const [id, label] of panels) {
@@ -215,6 +219,8 @@ export class UI {
     this.contextEl = h('div', { class: 'context-banner' });
     this.contextEl.addEventListener('click', () => app.exitGroup());
     this.viewportEl.appendChild(this.contextEl);
+    this.buildTouchBar();
+    this.buildContextMenu();
 
     this.toastEl = h('div', { class: 'toast' });
     this.root.appendChild(this.toastEl);
@@ -227,6 +233,19 @@ export class UI {
     });
     this.root.appendChild(this.fileInput);
 
+    // ドロップダウン: タップで開閉（iPad の Safari はボタンにフォーカスが移らないため）
+    header.querySelectorAll<HTMLDivElement>('.dropdown').forEach((dd) => {
+      dd.querySelector(':scope > button')!.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = !dd.classList.contains('open');
+        header.querySelectorAll('.dropdown.open').forEach((x) => x.classList.remove('open'));
+        dd.classList.toggle('open', open);
+      });
+    });
+    document.addEventListener('click', () => header.querySelectorAll('.dropdown.open').forEach((x) => x.classList.remove('open')));
+    // 3D 画面を触ったらパネル（ドロワー）を閉じる
+    this.viewportEl.addEventListener('pointerdown', () => this.root.classList.remove('panel-open'));
+
     // メニューの動作
     header.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button');
@@ -234,10 +253,11 @@ export class UI {
       const act = b.dataset.act;
       if (act === 'new') void app.newProject();
       if (act === 'sample') void app.loadSample();
+      if (act === 'sample-house') void app.loadHouseSample();
+      if (act === 'panel') this.root.classList.toggle('panel-open');
       if (act === 'open') this.pickFile('open');
       if (act === 'save') app.saveProject();
-      if (act === 'import-drawing') this.pickFile('drawing');
-      if (act === 'import-underlay') this.pickFile('underlay');
+      if (act === 'import-sheet') this.pickFile('sheet');
       if (act === 'import-pc') this.pickFile('pointcloud');
       if (act === 'undo') app.undo();
       if (act === 'redo') app.redo();
@@ -251,7 +271,10 @@ export class UI {
       if (b.dataset.view) app.viewport.setStandardView(b.dataset.view as StandardView);
       if (b.dataset.style) app.renderer.setFaceStyle(b.dataset.style as FaceStyle);
       // ドロップダウンを閉じる
-      if (b.closest('.dropdown-menu')) (document.activeElement as HTMLElement | null)?.blur();
+      if (b.closest('.dropdown-menu')) {
+        (document.activeElement as HTMLElement | null)?.blur();
+        b.closest('.dropdown')?.classList.remove('open');
+      }
     });
     this.undoBtn = header.querySelector('[data-act=undo]')!;
     this.redoBtn = header.querySelector('[data-act=redo]')!;
@@ -263,7 +286,7 @@ export class UI {
     app.selection.onChange(() => this.refreshPanel(['entity']));
     app.geo.onChange(() => this.refreshPanel(['geo']));
     app.pointClouds.onChange(() => this.refreshPanel(['pointclouds']));
-    app.underlays.onChange(() => this.refreshPanel(['underlays']));
+    app.sheets.onChange(() => this.refreshPanel(['sheets']));
     this.showPanel('entity');
     this.refreshAll();
   }
@@ -273,11 +296,10 @@ export class UI {
     this.redoBtn.disabled = !this.app.history.canRedo;
   }
 
-  pickFile(kind: 'open' | 'drawing' | 'underlay' | 'pointcloud'): void {
+  pickFile(kind: 'open' | 'sheet' | 'pointcloud'): void {
     const accept = {
       open: '.json,.3dcad',
-      drawing: '.dxf,.sfc,.p21',
-      underlay: '.pdf,.png,.jpg,.jpeg,.webp',
+      sheet: '.dxf,.sfc,.pdf,.png,.jpg,.jpeg,.webp',
       pointcloud: '.las,.laz,.ply,.xyz,.txt,.csv,.pts,.asc',
     }[kind];
     this.fileInput.accept = accept;
@@ -422,62 +444,215 @@ export class UI {
     return out;
   }
 
-  /** 2D 図面の読み込み設定 */
-  async drawingImportDialog(fileName: string, d: Drawing2D): Promise<DrawingImportOptions | null> {
+  /**
+   * 図面の読み込み設定。
+   * 図面シート（平面図・立面図・断面図として配置）か、平面図の線をモデルに取り込むかを選ぶ。
+   */
+  async sheetImportDialog(
+    fileName: string,
+    d: Drawing2D | null,
+    isPdf: boolean,
+    presetView?: SheetView,
+  ): Promise<{
+    mode: 'sheet' | 'model';
+    name: string;
+    view: SheetView;
+    lines?: SheetLineOptions;
+    model?: DrawingImportOptions;
+    page: number;
+    scale: number;
+  } | null> {
+    const guess: SheetView =
+      presetView ??
+      (/断面|section|sect/i.test(fileName)
+        ? 'section'
+        : /南|south/i.test(fileName)
+          ? 'south'
+          : /北|north/i.test(fileName)
+            ? 'north'
+            : /東|east/i.test(fileName)
+              ? 'east'
+              : /西|west/i.test(fileName)
+                ? 'west'
+                : /立面|elev/i.test(fileName)
+                  ? 'south'
+                  : 'plan');
+    const views = Object.entries(VIEW_LABEL) as [SheetView, string][];
     const body = h('div', { class: 'form' });
-    const w = d.max[0] - d.min[0];
-    const hgt = d.max[1] - d.min[1];
-    // 単位の推定: 座標が大きく（数万）図面幅も大きければ mm、公共座標っぽければ m
-    const guessUnit = d.unitHint ?? (Math.max(Math.abs(d.min[0]), Math.abs(d.min[1])) > 1000 && w < 5000 ? 'm' : w > 2000 ? 'mm' : 'm');
-    const looksPublic = Math.max(Math.abs(d.min[0]), Math.abs(d.min[1])) > 1000 && guessUnit === 'm';
-    body.innerHTML = `
-      <p class="modal-text">${esc(d.source)}: 線 ${d.paths.length.toLocaleString()} 本、文字 ${d.texts.length} 個<br>
-      範囲: ${w.toLocaleString(undefined, { maximumFractionDigits: 2 })} × ${hgt.toLocaleString(undefined, { maximumFractionDigits: 2 })}（図面単位）
-      ${d.warnings.length ? `<br><span class="warn">${d.warnings.map(esc).join('<br>')}</span>` : ''}</p>
-      <label class="form-row"><span>図面の単位</span>
-        <select data-k="unit">
-          <option value="0.001" ${guessUnit === 'mm' ? 'selected' : ''}>mm</option>
-          <option value="0.01" ${guessUnit === 'cm' ? 'selected' : ''}>cm</option>
-          <option value="1" ${guessUnit === 'm' ? 'selected' : ''}>m</option>
+    const viewSelect = `<label class="form-row"><span>図面の種類</span><select data-k="view">
+        ${views.map(([v, l]) => `<option value="${v}" ${v === guess ? 'selected' : ''}>${l}</option>`).join('')}
+      </select></label>`;
+    const nameRow = `<label class="form-row"><span>名前</span><input data-k="name" type="text" value="${esc(fileName.replace(/\.[^.]+$/, ''))}"></label>`;
+    if (!d) {
+      body.innerHTML = `
+        <p class="modal-text">${isPdf ? 'PDF' : '画像'}を図面シート（下図）として配置します。線・長方形ツールでなぞったり、プッシュ/プルで高さを合わせたりできます。</p>
+        ${nameRow}${viewSelect}
+        ${
+          isPdf
+            ? `<label class="form-row"><span>ページ</span><input data-k="page" type="text" value="1"></label>
+               <label class="form-row"><span>図面の縮尺 1/</span><input data-k="scale" type="text" value="100"></label>
+               <p class="muted">縮尺を入れると用紙サイズから実寸で配置します。あとで「縮尺合わせ」で寸法の分かる 2 点から補正できます。</p>`
+            : '<p class="muted">画像は縮尺が分からないので幅 20m で置きます。配置後に「縮尺合わせ」をしてください。</p>'
+        }`;
+    } else {
+      const w = d.max[0] - d.min[0];
+      const hgt = d.max[1] - d.min[1];
+      const guessUnit = d.unitHint ?? (Math.max(Math.abs(d.min[0]), Math.abs(d.min[1])) > 1000 && w < 5000 ? 'm' : w > 2000 ? 'mm' : 'm');
+      const looksPublic = Math.max(Math.abs(d.min[0]), Math.abs(d.min[1])) > 1000 && guessUnit === 'm';
+      const noise = /寸法|DIM|文字|TEXT|ハッチ|HATCH|旗|引出|注記|図枠|枠|表題/i;
+      body.innerHTML = `
+        <p class="modal-text">${esc(d.source)}: 線 ${d.paths.length.toLocaleString()} 本、文字 ${d.texts.length} 個　範囲 ${w.toLocaleString(undefined, { maximumFractionDigits: 2 })} × ${hgt.toLocaleString(undefined, { maximumFractionDigits: 2 })}（図面単位）
+        ${d.warnings.length ? `<br><span class="warn">${d.warnings.map(esc).join('<br>')}</span>` : ''}</p>
+        <label class="form-row"><span>取り込み方</span><select data-k="mode">
+          <option value="sheet" selected>図面シートとして配置（外形から立体化・スナップ用）</option>
+          <option value="model">平面図の線をモデルに取り込む（面を張ってレイヤーごとに押し出し）</option>
         </select></label>
-      <label class="form-row"><span>座標</span>
-        <select data-k="geo">
-          <option value="local" ${looksPublic ? '' : 'selected'}>ローカル（図面の左下を原点に）</option>
-          <option value="public" ${looksPublic ? 'selected' : ''}>公共座標（図面の X=東, Y=北 の平面直角座標）</option>
-        </select></label>
-      <label class="form-row"><span>配置する高さ（標高 m）</span><input data-k="elev" type="text" value="0"></label>
-      <p class="modal-text"><b>画層</b>（「面」にチェックした画層は、線で囲まれた部分に自動で面を張ります。外形線・構造物の画層を選ぶと、あとで押し出すだけで 3D になります。寸法線・文字・ハッチングの画層は外すのがおすすめです）</p>
-      <div class="layer-table">
-        <div class="layer-head"><span>読込</span><span>面</span><span>画層</span><span>数</span></div>
-        ${d.layers
-          .map(
-            (l, i) => `<label class="layer-line">
-              <input type="checkbox" data-layer="${i}" checked>
-              <input type="checkbox" data-face="${i}" ${/寸法|DIM|文字|TEXT|ハッチ|HATCH|旗|引出|注記|図枠|枠/i.test(l.name) ? '' : 'checked'}>
-              <span><i class="swatch" style="background:${l.color}"></i>${esc(l.name)}</span>
-              <span>${l.count}</span></label>`,
-          )
-          .join('')}
-      </div>`;
+        ${nameRow}${viewSelect}
+        <label class="form-row"><span>図面の単位</span>
+          <select data-k="unit">
+            <option value="0.001" ${guessUnit === 'mm' ? 'selected' : ''}>mm</option>
+            <option value="0.01" ${guessUnit === 'cm' ? 'selected' : ''}>cm</option>
+            <option value="1" ${guessUnit === 'm' ? 'selected' : ''}>m</option>
+          </select></label>
+        <label class="form-row" data-plan-only><span>座標（平面図）</span>
+          <select data-k="geo">
+            <option value="local" ${looksPublic ? '' : 'selected'}>ローカル（図面の左下を原点に）</option>
+            <option value="public" ${looksPublic ? 'selected' : ''}>公共座標（図面の X=東, Y=北 の平面直角座標）</option>
+          </select></label>
+        <label class="form-row" data-plan-only><span>置く高さ（標高 m）</span><input data-k="elev" type="text" value="0"></label>
+        <p class="muted">立面図・断面図は建物（平面図）の横に自動で立てて配置し、図面の一番下を高さ 0（GL）に置きます。</p>
+        <p class="modal-text"><b>画層</b>（寸法・文字・ハッチングは外すと外形が取りやすくなります。「面」はモデルに取り込む場合だけ使います）</p>
+        <div class="layer-table">
+          <div class="layer-head"><span>読込</span><span>面</span><span>画層</span><span>数</span></div>
+          ${d.layers
+            .map(
+              (l, i) => `<label class="layer-line">
+                <input type="checkbox" data-layer="${i}" ${noise.test(l.name) ? '' : 'checked'}>
+                <input type="checkbox" data-face="${i}" ${noise.test(l.name) || /通り|芯|GL|基準/i.test(l.name) ? '' : 'checked'}>
+                <span><i class="swatch" style="background:${l.color}"></i>${esc(l.name)}</span>
+                <span>${l.count}</span></label>`,
+            )
+            .join('')}
+        </div>`;
+      const sync = () => {
+        const isPlan = body.querySelector<HTMLSelectElement>('[data-k=view]')!.value === 'plan';
+        body.querySelectorAll<HTMLElement>('[data-plan-only]').forEach((el) => (el.style.display = isPlan ? '' : 'none'));
+      };
+      body.querySelector('[data-k=view]')!.addEventListener('change', sync);
+      sync();
+    }
     const res = await this.modal(`図面の読み込み: ${fileName}`, body, [
       ['ok', '読み込む'],
       ['cancel', 'キャンセル'],
     ]);
     if (res !== 'ok') return null;
-    const q = (k: string) => body.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-k=${k}]`)!.value;
-    const layers = new Set<string>();
-    const faceLayers = new Set<string>();
-    d.layers.forEach((l, i) => {
-      if (body.querySelector<HTMLInputElement>(`[data-layer="${i}"]`)!.checked) layers.add(l.name);
-      if (body.querySelector<HTMLInputElement>(`[data-face="${i}"]`)!.checked) faceLayers.add(l.name);
+    const q = (k: string) => body.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-k=${k}]`)?.value ?? '';
+    const view = q('view') as SheetView;
+    const out = {
+      mode: (q('mode') || 'sheet') as 'sheet' | 'model',
+      name: q('name') || fileName,
+      view,
+      page: Number(q('page')) || 1,
+      scale: Number(q('scale')) || 100,
+    } as NonNullable<Awaited<ReturnType<UI['sheetImportDialog']>>>;
+    if (d) {
+      const layers = new Set<string>();
+      const faceLayers = new Set<string>();
+      d.layers.forEach((l, i) => {
+        if (body.querySelector<HTMLInputElement>(`[data-layer="${i}"]`)!.checked) layers.add(l.name);
+        if (body.querySelector<HTMLInputElement>(`[data-face="${i}"]`)!.checked) faceLayers.add(l.name);
+      });
+      const unitToMeters = Number(q('unit'));
+      const georeferenced = view === 'plan' && q('geo') === 'public';
+      const elevation = view === 'plan' ? Number(q('elev')) || 0 : 0;
+      out.lines = { unitToMeters, layers, georeferenced, elevation };
+      out.model = { unitToMeters, layers, georeferenced, elevation, faceLayers };
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // タブレット用の操作ボタン・右クリックメニュー
+  // ------------------------------------------------------------------
+
+  /** キーボードの無いタブレットでも操作できるよう、画面上に Esc / Enter などのボタンを出す */
+  private buildTouchBar(): void {
+    const app = this.app;
+    const bar = h('div', { class: 'touchbar' });
+    const items: [string, string, () => void][] = [
+      ['取消', 'Esc（操作の取り消し）', () => (app.tool.def.id === 'select' && app.model.activeGroup ? app.exitGroup() : app.tool.reset())],
+      ['確定', 'Enter（図面から立体などの確定）', () => app.tool.onKeyDown(new KeyboardEvent('keydown', { key: 'Enter' }))],
+      ['元に戻す', 'Ctrl+Z', () => app.undo()],
+      ['削除', '選択を削除', () => app.deleteSelection()],
+      ['回転', '視点の回転（1 本指ドラッグ）', () => app.setTool(app.tool.def.id === 'orbit' ? 'select' : 'orbit')],
+      ['全体', '全体表示', () => app.zoomExtents()],
+    ];
+    for (const [label, title, fn] of items) {
+      const b = h('button', { title }, esc(label));
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fn();
+      });
+      bar.appendChild(b);
+    }
+    this.viewportEl.appendChild(bar);
+  }
+
+  /** PC: 右クリック（ドラッグしなかった場合）でメニュー。右ドラッグはパン */
+  private buildContextMenu(): void {
+    const app = this.app;
+    const menu = h('div', { class: 'context-menu' });
+    this.viewportEl.appendChild(menu);
+    const close = () => (menu.style.display = 'none');
+    let down: { x: number; y: number } | null = null;
+    this.viewportEl.addEventListener('pointerdown', (e) => {
+      close();
+      if (e.button === 2) down = { x: e.clientX, y: e.clientY };
     });
-    return {
-      unitToMeters: Number(q('unit')),
-      georeferenced: q('geo') === 'public',
-      elevation: Number(q('elev')) || 0,
-      layers,
-      faceLayers,
-    };
+    this.viewportEl.addEventListener('pointerup', (e) => {
+      if (e.button !== 2 || !down) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4;
+      down = null;
+      if (moved) return;
+      const sel = app.selection;
+      const g = app.selectedGroup();
+      const items: [string, (() => void) | null][] = [
+        ['全体表示', () => app.zoomExtents()],
+        ['すべて選択', () => sel.selectAll()],
+        ['選択を解除', sel.isEmpty ? null : () => sel.clear()],
+        ['削除', sel.isEmpty ? null : () => app.deleteSelection()],
+        ['グループにする', sel.isEmpty || app.model.activeGroup ? null : () => app.makeGroupFromSelection()],
+        ['グループの中を編集', g ? () => app.enterGroup(g) : null],
+        ['グループを解除', g ? () => app.explodeSelectedGroup() : null],
+        ['グループの編集を終了', app.model.activeGroup ? () => app.exitGroup() : null],
+        [
+          '面の向きを反転',
+          sel.faces.size
+            ? () => {
+                for (const id of sel.faces) app.model.reverseFace(id);
+                app.history.commit('面の反転');
+              }
+            : null,
+        ],
+      ];
+      menu.innerHTML = '';
+      for (const [label, fn] of items) {
+        const b = h('button', {}, esc(label));
+        if (!fn) b.disabled = true;
+        else
+          b.addEventListener('click', () => {
+            close();
+            fn();
+          });
+        menu.appendChild(b);
+      }
+      const p = app.viewport.toCanvas(e.clientX, e.clientY);
+      const r = this.viewportEl.getBoundingClientRect();
+      menu.style.display = 'block';
+      menu.style.left = `${Math.min(p.x, r.width - 200)}px`;
+      menu.style.top = `${Math.min(p.y, r.height - menu.offsetHeight - 8)}px`;
+    });
+    window.addEventListener('keydown', (e) => e.key === 'Escape' && close());
   }
 
   // ------------------------------------------------------------------
@@ -492,7 +667,7 @@ export class UI {
   }
 
   refreshAll(): void {
-    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'underlays', 'help']);
+    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'sheets', 'help']);
   }
 
   private refreshPanel(ids: PanelId[]): void {
@@ -516,8 +691,8 @@ export class UI {
         case 'pointclouds':
           this.renderPointClouds(body);
           break;
-        case 'underlays':
-          this.renderUnderlays(body);
+        case 'sheets':
+          this.renderSheets(body);
           break;
         case 'help':
           this.renderHelp(body);
@@ -764,60 +939,83 @@ export class UI {
     body.querySelector<HTMLInputElement>('[data-snap]')!.addEventListener('change', (e) => (this.app.inference.pointCloudSnap = (e.target as HTMLInputElement).checked));
   }
 
-  private renderUnderlays(body: HTMLDivElement): void {
-    const um = this.app.underlays;
+  private renderSheets(body: HTMLDivElement): void {
+    const sm = this.app.sheets;
+    const views = Object.entries(VIEW_LABEL) as [SheetView, string][];
     body.innerHTML = `
-      <h3>下図（発注図面の PDF・画像）</h3>
-      ${um.items.length ? '' : '<p class="muted">「読み込み → 下図」で PDF や画像を地面に敷き、線・長方形ツールでなぞって 3D 化できます。DXF / SXF がある場合はそちらの方が正確です。</p>'}
-      ${um.items
+      <h3>図面シート</h3>
+      <div class="row"><button data-add class="primary">図面を読み込む…</button><button data-sample>サンプル</button></div>
+      ${
+        sm.items.length
+          ? ''
+          : `<p class="muted">平面図は地面に、立面図・断面図は建物の横に立てて配置します。DXF / SXF の線にはスナップでき、
+             「図面から立体」ツール（K）で外形をクリックしていくと、重なった部分が立体になります。PDF・画像は下図としてなぞれます。</p>`
+      }
+      ${sm.items
         .map(
-          (u) => `<div class="pc-item" data-id="${u.id}">
-            <div class="row"><input type="checkbox" data-vis ${u.visible ? 'checked' : ''}><b class="grow" title="${esc(u.name)}">${esc(u.name)}</b><button data-del>×</button></div>
-            <div class="muted small">幅 ${formatLength(u.widthPx * u.metersPerPixel, 'm')} × 奥行 ${formatLength(u.heightPx * u.metersPerPixel, 'm')}</div>
-            <label class="form-row"><span>不透明度</span><input type="range" min="0.1" max="1" step="0.05" value="${u.opacity}" data-op></label>
-            <label class="form-row"><span>高さ（m）</span><input data-elev value="${u.elevation}"></label>
+          (s) => `<div class="pc-item" data-id="${s.id}">
+            <div class="row"><input type="checkbox" data-vis ${s.visible ? 'checked' : ''} title="表示"><b class="grow" title="${esc(s.name)}">${esc(s.name)}</b><button data-del title="削除">×</button></div>
+            <label class="form-row"><span>種類</span><select data-view>
+              ${views.map(([v, l]) => `<option value="${v}" ${s.view === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select></label>
+            <div class="muted small">${s.segments ? `線 ${(s.segments.length / 4).toLocaleString()} 本` : '画像'}　${formatLength(s.width * s.scale, 'm')} × ${formatLength(s.height * s.scale, 'm')}</div>
+            ${s.image ? `<label class="form-row"><span>不透明度</span><input type="range" min="0.1" max="1" step="0.05" value="${s.opacity}" data-op></label>` : ''}
             <div class="btn-grid">
-              <button data-mode="scale">縮尺合わせ（2点）</button>
-              <button data-mode="move">移動</button>
+              <button data-mode="move" title="図面の基準点をクリック → 合わせ先をクリック">位置合わせ</button>
+              <button data-mode="height" title="GL などの点をクリックして高さを指定">高さ合わせ（GL）</button>
+              <button data-mode="scale" title="寸法の分かる 2 点で縮尺を補正">縮尺合わせ</button>
               <button data-mode="rotate">回転</button>
-              <button data-mode="known">既知座標に合わせる</button>
+              ${s.view === 'plan' ? '<button data-mode="known">既知座標に合わせる</button>' : ''}
+              <button data-flip title="図面の左右の向きを 180° 反転（北立面⇔南立面など）">向きを反転</button>
             </div>
           </div>`,
         )
         .join('')}`;
+    body.querySelector('[data-add]')!.addEventListener('click', () => this.pickFile('sheet'));
+    body.querySelector('[data-sample]')!.addEventListener('click', () => void this.app.loadHouseSample());
     body.querySelectorAll<HTMLDivElement>('.pc-item').forEach((row) => {
-      const u = um.items.find((x) => x.id === Number(row.dataset.id))!;
+      const s = sm.items.find((x) => x.id === Number(row.dataset.id))!;
       row.querySelector<HTMLInputElement>('[data-vis]')!.addEventListener('change', (e) => {
-        u.visible = (e.target as HTMLInputElement).checked;
-        um.apply(u);
+        s.visible = (e.target as HTMLInputElement).checked;
+        sm.apply(s);
       });
-      row.querySelector('[data-del]')!.addEventListener('click', () => um.remove(u));
-      row.querySelector<HTMLInputElement>('[data-op]')!.addEventListener('input', (e) => {
-        u.opacity = Number((e.target as HTMLInputElement).value);
-        um.apply(u);
+      row.querySelector('[data-del]')!.addEventListener('click', () => sm.remove(s));
+      row.querySelector<HTMLInputElement>('[data-op]')?.addEventListener('input', (e) => {
+        s.opacity = Number((e.target as HTMLInputElement).value);
+        sm.apply(s);
       });
-      row.querySelector<HTMLInputElement>('[data-elev]')!.addEventListener('change', (e) => {
-        u.elevation = Number((e.target as HTMLInputElement).value) || 0;
-        um.apply(u);
+      row.querySelector<HTMLSelectElement>('[data-view]')!.addEventListener('change', (e) => {
+        // 種類を変えたら向きを付け直し、建物の横に置き直す
+        s.view = (e.target as HTMLSelectElement).value as SheetView;
+        s.angle = (VIEW_ANGLE[s.view] * Math.PI) / 180;
+        if (s.view !== 'plan') sm.autoPlace(s, this.app.sheets.boundingBox((x) => x.visible && x.view === 'plan' && x !== s).union(this.app.model.boundingBox()));
+        else s.origin = [s.origin[0], 0, s.origin[2]];
+        sm.apply(s);
+      });
+      row.querySelector('[data-flip]')!.addEventListener('click', () => {
+        const c = sm.toWorld(s, s.width / 2, s.height / 2);
+        sm.rotate(s, c, Math.PI);
       });
       row.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) =>
-        b.addEventListener('click', () => this.app.adjustUnderlay(u, b.dataset.mode as 'scale' | 'move' | 'rotate' | 'known')),
+        b.addEventListener('click', () => this.app.adjustSheet(s, b.dataset.mode as SheetAdjustMode)),
       );
     });
   }
 
   private renderHelp(body: HTMLDivElement): void {
     body.innerHTML = `
-      <h3>発注図面から 3D を作る</h3>
+      <h3>平面図・立面図・断面図から 3D を作る</h3>
       <ol class="steps">
-        <li>「座標系」で平面直角座標の系番号を選ぶ</li>
-        <li>「読み込み → 発注図面」で DXF / SXF(SFC) を開く（公共座標の図面ならそのまま位置が合います）</li>
-        <li>外形線の画層に「面」のチェックを入れて読み込む</li>
-        <li>「レイヤー」パネルの「押し出し」で高さを入れて一括立体化</li>
-        <li>細かい所はプッシュ/プル（P）で面を引っ張って調整</li>
-        <li>「AR で見る」で現地・会議室で確認</li>
+        <li>「読み込み → 図面」で平面図を開く（DXF / SXF / PDF / 画像）。地面に水平に置かれます</li>
+        <li>同じように立面図・断面図を開き、種類（南立面など）を選ぶ。建物の横に自動で立てて配置されます</li>
+        <li>ずれていれば「図面」パネルの「位置合わせ」で通り芯や角を合わせ、「高さ合わせ」で GL を 0 に</li>
+        <li><b>図面から立体（K）</b>: 平面図の外形 → 立面図の外形 の順にクリックして Enter。重なった部分が屋根付きの立体になります（東立面も加えると寄棟）</li>
+        <li>平面図だけなら、外形をクリックして高さを入力 → Enter で押し出し</li>
+        <li>細かい所は、図面の線にスナップしながら線・長方形・プッシュ/プルで仕上げる（立面図の窓の位置に長方形を描いて押し込むと開口）</li>
       </ol>
-      <p class="muted">PDF しかない場合は「下図」として読み込み、縮尺合わせをしてから線（L）・長方形（R）でなぞります。</p>
+      <p class="muted">試すには「読み込み → サンプル: 住宅」。PDF・画像の図面は線を拾えないので、なぞって作図します。</p>
+      <h3>タブレットでの操作</h3>
+      <p class="muted">1 本指でツール操作、2 本指でズーム・パン。視点を回すときは右下の「回転」。Esc・Enter の代わりに「取消」「確定」ボタン。数値は右下の入力欄をタップして入力。メニューの ☰ でパネルを開きます。</p>
       <h3>基本操作（SketchUp と同じ）</h3>
       <table class="keys">
         <tr><td>中ボタンドラッグ</td><td>視点の回転</td></tr>
@@ -826,6 +1024,8 @@ export class UI {
         <tr><td>Space</td><td>選択</td></tr>
         <tr><td>L / R / C</td><td>線 / 長方形 / 円</td></tr>
         <tr><td>P</td><td>プッシュ/プル</td></tr>
+        <tr><td>K</td><td>図面から立体（外形をクリック → Enter）</td></tr>
+        <tr><td>右クリック</td><td>メニュー（削除・グループ化など）</td></tr>
         <tr><td>M / Q</td><td>移動（Ctrl でコピー） / 回転</td></tr>
         <tr><td>T / I</td><td>メジャー / 座標</td></tr>
         <tr><td>E / B</td><td>消しゴム / ペイント</td></tr>

@@ -2,7 +2,6 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 // 圧縮版は制御文字をそのまま含むため、配信しやすい非圧縮版を使う
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
-import type { UnderlayData } from '../view/UnderlayManager';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -50,23 +49,4 @@ export async function loadImage(file: File): Promise<RasterResult> {
   img.src = dataUrl;
   await img.decode();
   return { dataUrl, widthPx: img.naturalWidth, heightPx: img.naturalHeight };
-}
-
-/** 縮尺 1/N の図面として配置するときの下図データ */
-export function underlayFromRaster(name: string, r: RasterResult, scaleDenominator: number, center: { x: number; z: number }): UnderlayData {
-  // PDF なら用紙サイズが分かるので、縮尺から実寸を計算できる
-  const mmPerPx = r.paperMmPerPx ?? 25.4 / 96;
-  return {
-    name,
-    dataUrl: r.dataUrl,
-    widthPx: r.widthPx,
-    heightPx: r.heightPx,
-    metersPerPixel: (mmPerPx * scaleDenominator) / 1000,
-    cx: center.x,
-    cz: center.z,
-    elevation: 0,
-    rotation: 0,
-    opacity: 0.85,
-    visible: true,
-  };
 }

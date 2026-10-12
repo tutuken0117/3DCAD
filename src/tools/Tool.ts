@@ -93,7 +93,7 @@ export abstract class Tool {
 
   /** 面上なら面の平面、それ以外は水平面 */
   protected planeFrom(inf: InferenceResult): Plane {
-    if (inf.type === 'onFace' && inf.normal) {
+    if ((inf.type === 'onFace' || inf.type === 'onSheet' || inf.sheet) && inf.normal) {
       return new Plane().setFromNormalAndCoplanarPoint(inf.normal, inf.point);
     }
     return new Plane(new Vector3(0, 1, 0), -inf.point.y);

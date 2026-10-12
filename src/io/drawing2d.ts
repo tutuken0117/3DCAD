@@ -122,14 +122,15 @@ type P = [number, number];
  *  2. 行き止まりの線を除去
  *  3. 各有向辺から「いちばん左に曲がる」方向にたどって閉路を得る
  * regions: 反時計回りの多角形のリスト（外周の無限領域は除く）
+ * outers: つながった図形ごとの外形線（シルエット）。反時計回り
  * segments: 交点で分割した後の線分（エッジ作成用）
  */
 export function findClosedRegions(
   segments: [P, P][],
   tol = 1e-4,
   maxFaces = 20000,
-): { regions: P[][]; segments: [P, P][] } {
-  if (!segments.length) return { regions: [], segments: [] };
+): { regions: P[][]; outers: P[][]; segments: [P, P][] } {
+  if (!segments.length) return { regions: [], outers: [], segments: [] };
   const key = (p: P) => `${Math.round(p[0] / tol)},${Math.round(p[1] / tol)}`;
 
   // --- 1. 交差分割（グリッドで候補を絞る） ---
@@ -260,6 +261,7 @@ export function findClosedRegions(
   // --- 4. 面をたどる ---
   const visited = new Set<string>();
   const faces: P[][] = [];
+  const outers: P[][] = [];
   for (const [u, nbs] of sorted) {
     for (const v0 of nbs) {
       if (visited.has(`${u}>${v0}`)) continue;
@@ -287,9 +289,12 @@ export function findClosedRegions(
       }
       if (area / 2 > tol * tol * 10) {
         faces.push(poly);
-        if (faces.length >= maxFaces) return { regions: faces, segments: noded };
+        if (faces.length >= maxFaces) return { regions: faces, outers, segments: noded };
+      } else if (-area / 2 > tol * tol * 10) {
+        // 時計回り = つながった図形の外周
+        outers.push([...poly].reverse());
       }
     }
   }
-  return { regions: faces, segments: noded };
+  return { regions: faces, outers, segments: noded };
 }

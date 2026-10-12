@@ -3,7 +3,7 @@ import type { Model } from '../core/Model';
 import type { ModelRenderer } from './ModelRenderer';
 import type { Viewport } from './Viewport';
 import type { PointCloudManager } from './PointCloudManager';
-import type { UnderlayManager } from './UnderlayManager';
+import type { SheetManager } from './SheetManager';
 
 export type InferenceType =
   | 'endpoint'
@@ -13,7 +13,7 @@ export type InferenceType =
   | 'axis'
   | 'locked'
   | 'pointcloud'
-  | 'underlay'
+  | 'onSheet'
   | 'ground'
   | 'free';
 
@@ -25,9 +25,11 @@ export interface InferenceResult {
   vertexId?: number;
   edgeId?: number;
   faceId?: number;
-  /** 面の法線（onFace の場合） */
+  /** 面の法線（onFace / onSheet の場合） */
   normal?: Vector3;
   axis?: AxisName;
+  /** 図面シートの線・点にスナップした */
+  sheet?: boolean;
 }
 
 export interface InferenceOptions {
@@ -55,7 +57,7 @@ export const INFERENCE_LABEL: Record<InferenceType, string> = {
   axis: '軸方向',
   locked: 'ロック中',
   pointcloud: '点群',
-  underlay: '下図上',
+  onSheet: '図面上',
   ground: '地面',
   free: '',
 };
@@ -98,7 +100,7 @@ export class Inference {
     private model: Model,
     private renderer: ModelRenderer,
     private pointClouds: PointCloudManager,
-    private underlays: UnderlayManager,
+    private sheets: SheetManager,
   ) {}
 
   infer(clientX: number, clientY: number, opt: InferenceOptions = {}): InferenceResult {
@@ -112,7 +114,7 @@ export class Inference {
     if (opt.from && opt.lockDir) {
       const p = closestOnLineToRay(ray, opt.from, opt.lockDir);
       // ロック中でも端点があればその投影点を使う
-      const snap = this.snapVertex(mouse, opt.excludeVertices);
+      const snap = this.snapVertex(mouse, opt.excludeVertices) ?? this.snapSheetPoint(mouse, 'endpoint');
       if (snap) {
         const d = opt.lockDir.clone().normalize();
         const proj = opt.from.clone().addScaledVector(d, snap.point.clone().sub(opt.from).dot(d));
@@ -129,7 +131,7 @@ export class Inference {
     };
 
     // 1. 端点
-    const v = this.snapVertex(mouse, opt.excludeVertices, occluded);
+    const v = this.snapVertex(mouse, opt.excludeVertices, occluded) ?? this.snapSheetPoint(mouse, 'endpoint', occluded);
     if (v) return v;
 
     // 2. 中点
@@ -148,6 +150,8 @@ export class Inference {
       }
     }
     if (best) return best;
+    const sm = this.snapSheetPoint(mouse, 'midpoint', occluded);
+    if (sm) return sm;
 
     // 3. 軸方向（始点がある場合）
     if (opt.from) {
@@ -180,6 +184,15 @@ export class Inference {
       }
     }
     if (best) return best;
+    for (const [a, b, n] of this.sheets.worldSegments()) {
+      const p = closestOnSegmentToRay(ray, a, b);
+      const d = vp.toScreen(p, scr).distanceTo(mouse);
+      if (d < bestD && !occluded(p)) {
+        bestD = d;
+        best = { point: p, type: 'onEdge', sheet: true, normal: n };
+      }
+    }
+    if (best) return best;
 
     // 5. 点群
     if (this.pointCloudSnap) {
@@ -194,14 +207,36 @@ export class Inference {
       return { point: faceHit.point, type: 'onFace', faceId: faceHit.faceId, normal: faceHit.normal };
     }
 
-    // 7. 作図平面 / 下図 / 地面
+    // 7. 図面シートの面上（作図平面として使える）
+    if (!opt.plane && !opt.from) {
+      const sh = this.sheets.hit(ray);
+      if (sh) return { point: sh.point, type: 'onSheet', normal: this.sheets.normal(sh.sheet) };
+    }
+
+    // 8. 作図平面 / 地面
     const plane = opt.plane ?? new Plane(new Vector3(0, 1, 0), opt.from ? -opt.from.y : 0);
     const hit = ray.intersectPlane(plane, new Vector3());
-    if (hit) {
-      const onUnderlay = this.underlays.hitTest(hit);
-      return { point: hit, type: onUnderlay ? 'underlay' : opt.plane || opt.from ? 'free' : 'ground' };
-    }
+    if (hit) return { point: hit, type: opt.plane || opt.from ? 'free' : 'ground' };
     return { point: ray.at(Math.max(1, vp.camera.position.distanceTo(vp.controls.target)), new Vector3()), type: 'free' };
+  }
+
+  /** 図面シートの線の端点・中点 */
+  private snapSheetPoint(mouse: Vector2, kind: 'endpoint' | 'midpoint', occluded?: (p: Vector3) => boolean): InferenceResult | null {
+    const scr = new Vector2();
+    let best: InferenceResult | null = null;
+    let bestD = SNAP_PX;
+    const test = (p: Vector3, n: Vector3) => {
+      const d = this.viewport.toScreen(p, scr).distanceTo(mouse);
+      if (d < bestD && !occluded?.(p)) {
+        bestD = d;
+        best = { point: p.clone(), type: kind, sheet: true, normal: n };
+      }
+    };
+    for (const [a, b, n] of this.sheets.worldSegments()) {
+      if (kind === 'endpoint') (test(a, n), test(b, n));
+      else test(a.clone().add(b).multiplyScalar(0.5), n);
+    }
+    return best;
   }
 
   private snapVertex(

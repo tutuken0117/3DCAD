@@ -3,6 +3,7 @@ import { ARViewer } from './ar/ARViewer';
 import { History } from './core/History';
 import { Model } from './core/Model';
 import { Selection } from './core/Selection';
+import { intersectProfiles } from './core/profileSolid';
 import { GeoReference } from './geo/GeoReference';
 import { parseDxf, decodeDxf } from './io/dxf';
 import type { Drawing2D } from './io/drawing2d';
@@ -18,9 +19,11 @@ import {
   type ProjectFile,
 } from './io/project';
 import { parseSfc } from './io/sxf';
-import { loadImage, rasterizePdf, underlayFromRaster } from './io/underlayLoader';
+import { loadImage, rasterizePdf } from './io/underlayLoader';
+import { sheetFromDrawing, sheetFromRaster } from './io/sheetImport';
 import { CircleTool, LineTool, RectangleTool } from './tools/DrawTools';
-import { CoordTool, OrbitTool, PanTool, TapeTool, UnderlayAdjustTool } from './tools/MiscTools';
+import { CoordTool, OrbitTool, PanTool, SheetAdjustTool, TapeTool, type SheetAdjustMode } from './tools/MiscTools';
+import { ProfileTool } from './tools/ProfileTool';
 import { EraserTool, MoveTool, PaintTool, PushPullTool, RotateTool } from './tools/ModifyTools';
 import { SelectTool } from './tools/SelectTool';
 import type { Tool } from './tools/Tool';
@@ -29,9 +32,8 @@ import { Inference } from './view/Inference';
 import { ModelRenderer } from './view/ModelRenderer';
 import { Overlay } from './view/Overlay';
 import { PointCloudManager, type AxisOrder } from './view/PointCloudManager';
-import { UnderlayManager, type Underlay } from './view/UnderlayManager';
+import { SheetManager, sheetFromLegacyUnderlay, VIEW_LABEL, type Sheet, type SheetData, type SheetView } from './view/SheetManager';
 import { Viewport } from './view/Viewport';
-import type { UnderlayAdjustMode } from './tools/MiscTools';
 
 /** アプリ全体をつなぐクラス */
 export class App {
@@ -42,7 +44,7 @@ export class App {
   readonly renderer: ModelRenderer;
   readonly geo = new GeoReference();
   readonly pointClouds: PointCloudManager;
-  readonly underlays: UnderlayManager;
+  readonly sheets: SheetManager;
   readonly inference: Inference;
   readonly overlay: Overlay;
   readonly ui: UI;
@@ -61,8 +63,8 @@ export class App {
     this.selection = new Selection(this.model);
     this.renderer = new ModelRenderer(this.viewport, this.model, this.selection);
     this.pointClouds = new PointCloudManager(this.viewport, this.geo);
-    this.underlays = new UnderlayManager(this.viewport);
-    this.inference = new Inference(this.viewport, this.model, this.renderer, this.pointClouds, this.underlays);
+    this.sheets = new SheetManager(this.viewport);
+    this.inference = new Inference(this.viewport, this.model, this.renderer, this.pointClouds, this.sheets);
     this.overlay = new Overlay(this.viewport);
     this.ar = new ARViewer(this);
 
@@ -72,6 +74,7 @@ export class App {
       new RectangleTool(this),
       new CircleTool(this),
       new PushPullTool(this),
+      new ProfileTool(this),
       new MoveTool(this),
       new RotateTool(this),
       new TapeTool(this),
@@ -80,7 +83,7 @@ export class App {
       new CoordTool(this),
       new OrbitTool(this),
       new PanTool(this),
-      new UnderlayAdjustTool(this),
+      new SheetAdjustTool(this),
     ]) {
       this.tools.set(t.def.id, t);
     }
@@ -96,7 +99,7 @@ export class App {
       this.ui.setContext(g ? (this.model.groups.get(g)?.name ?? null) : null);
     });
     this.geo.onChange(() => this.scheduleAutosave());
-    this.underlays.onChange(() => this.scheduleAutosave());
+    this.sheets.onChange(() => this.scheduleAutosave());
   }
 
   // ------------------------------------------------------------------
@@ -113,12 +116,12 @@ export class App {
     this.viewport.renderer.domElement.style.cursor = id === 'select' ? 'default' : id === 'orbit' || id === 'pan' ? 'grab' : 'crosshair';
   }
 
-  /** 下図の調整ツールを開始 */
-  adjustUnderlay(u: Underlay, mode: UnderlayAdjustMode): void {
-    const t = this.tools.get('underlay-adjust') as UnderlayAdjustTool;
-    t.target = u;
+  /** 図面シートの調整ツールを開始 */
+  adjustSheet(s: Sheet, mode: SheetAdjustMode): void {
+    const t = this.tools.get('sheet-adjust') as SheetAdjustTool;
+    t.target = s;
     t.mode = mode;
-    this.setTool('underlay-adjust');
+    this.setTool('sheet-adjust');
   }
 
   private bindInput(): void {
@@ -209,6 +212,7 @@ export class App {
       r: 'rect',
       c: 'circle',
       p: 'pushpull',
+      k: 'profile',
       m: 'move',
       q: 'rotate',
       t: 'tape',
@@ -344,7 +348,7 @@ export class App {
   zoomExtents(): void {
     const box = this.model.boundingBox();
     for (const b of this.pointClouds.boundingBoxes()) box.union(b);
-    for (const u of this.underlays.items) if (u.visible) box.union(new Box3().setFromObject(u.mesh));
+    box.union(this.sheets.boundingBox());
     if (box.isEmpty()) box.set(new Vector3(-5, 0, -5), new Vector3(5, 3, 5));
     this.viewport.zoomToBox(box);
   }
@@ -357,13 +361,14 @@ export class App {
     const name = file.name.toLowerCase();
     try {
       if (name.endsWith('.json') || name.endsWith('.3dcad')) return await this.openProject(file);
-      if (name.endsWith('.dxf') || name.endsWith('.sfc')) return await this.importDrawingFile(file);
-      if (name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) return await this.importUnderlayFile(file);
+      if (name.endsWith('.dxf') || name.endsWith('.sfc') || name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
+        return await this.importSheetFile(file);
+      }
       if (detectPointCloudFormat(name)) return await this.importPointCloudFile(file);
       if (name.endsWith('.p21') || name.endsWith('.dwg') || name.endsWith('.jww')) {
         this.ui.alert(
           '未対応の形式',
-          `${file.name} は直接読み込めません。<br>発注図面を CAD（または SXF ブラウザ・Jw_cad など）で <b>DXF</b> か <b>SFC</b> に変換してから読み込んでください。PDF なら下図として読み込めます。`,
+          `${file.name} は直接読み込めません。<br>発注図面を CAD（または SXF ブラウザ・Jw_cad など）で <b>DXF</b> か <b>SFC</b> に変換してから読み込んでください。PDF なら図面シートとして読み込めます。`,
         );
         return;
       }
@@ -379,7 +384,7 @@ export class App {
     this.tool.reset();
     this.model.clear();
     for (const c of [...this.pointClouds.clouds]) this.pointClouds.remove(c);
-    void this.underlays.load([]);
+    void this.sheets.load([]);
     this.geo.load({});
     this.history.reset();
     this.projectName = '無題';
@@ -395,7 +400,7 @@ export class App {
       savedAt: new Date().toISOString(),
       model: this.model.toJSON(),
       geo: this.geo.toJSON(),
-      underlays: this.underlays.toJSON(),
+      sheets: this.sheets.toJSON(),
       pointClouds: [
         ...this.pointClouds.clouds.map((c) => ({
           name: c.name,
@@ -413,7 +418,7 @@ export class App {
     this.tool.reset();
     this.geo.load(p.geo);
     this.model.load(p.model);
-    await this.underlays.load(p.underlays ?? []);
+    await this.sheets.load([...(p.sheets ?? []), ...(p.underlays ?? []).map(sheetFromLegacyUnderlay)]);
     this.pointCloudRefs = p.pointClouds ?? [];
     this.history.reset();
     if (p.camera) {
@@ -454,7 +459,7 @@ export class App {
 
   async restoreAutosave(): Promise<void> {
     const p = await loadAutosave();
-    if (!p || (p.model.faces.length === 0 && p.model.edges.length === 0)) return;
+    if (!p || (p.model.faces.length === 0 && p.model.edges.length === 0 && !p.sheets?.length)) return;
     const when = new Date(p.savedAt).toLocaleString('ja-JP');
     if (await this.ui.confirm('前回の作業を復元', `${when} に自動保存されたデータがあります。復元しますか？`, '復元する', '新規で始める')) {
       await this.loadProjectFile(p);
@@ -495,62 +500,114 @@ export class App {
     }
   }
 
-  // ---- 2D 図面 ----
-
-  async importDrawingFile(file: File): Promise<void> {
-    const name = file.name.toLowerCase();
-    const buf = await file.arrayBuffer();
-    let drawing: Drawing2D;
-    let sxfScale = 1;
-    if (name.endsWith('.sfc')) {
-      const res = await this.ui.form('SXF(SFC) の読み込み', [
-        { key: 'scale', label: '図面の縮尺 1/', type: 'number', value: '100' },
-      ], { description: 'SFC の座標は用紙上の mm です。図面の縮尺を入力してください（例: 1/500 なら 500）。' });
-      if (!res) return;
-      sxfScale = Number(res.scale) || 1;
-      drawing = parseSfc(new TextDecoder('shift_jis').decode(buf), sxfScale);
-    } else {
-      drawing = parseDxf(decodeDxf(buf));
+  /**
+   * サンプル: 住宅の平面図・南立面図・東立面図（DXF）を図面シートとして配置し、
+   * 「図面から立体」と同じ処理で 3 枚の外形の重なりから屋根付きの建物を作る。
+   */
+  async loadHouseSample(): Promise<void> {
+    try {
+      this.ui.toast('サンプル図面を読み込んでいます…');
+      const load = async (f: string) => parseDxf(decodeDxf(await fetch(`./${f}`).then((r) => r.arrayBuffer())));
+      const [plan, south, east] = await Promise.all([load('house_plan.dxf'), load('house_south.dxf'), load('house_east.dxf')]);
+      this.tool.reset();
+      const opt = (layers: string[]) => ({ unitToMeters: 0.001, layers: new Set(layers), georeferenced: false, elevation: 0 });
+      const sp = await this.addSheet(sheetFromDrawing('平面図（サンプル）', 'plan', plan, opt(['外壁', '間仕切', '通り芯']), this.geo), false);
+      const ss = await this.addSheet(sheetFromDrawing('南立面図（サンプル）', 'south', south, opt(['GL', '外形', '建具']), this.geo));
+      const se = await this.addSheet(sheetFromDrawing('東立面図（サンプル）', 'east', east, opt(['GL', '外形', '建具']), this.geo));
+      // 各図面の外形（建物の中央付近をクリックしたのと同じ）
+      const outline = (s: Sheet, u: number, v: number) =>
+        (this.sheets.pickOutline(s, [u, v]) ?? []).map(([a, b]) => this.sheets.toWorld(s, a, b));
+      const r = await intersectProfiles([
+        { kind: 'plan', outline: outline(sp, 2, 2) },
+        { kind: 'vertical', outline: outline(ss, 3, 2.6), axis: this.sheets.axisU(ss) },
+        { kind: 'vertical', outline: outline(se, 3, 2.6), axis: this.sheets.axisU(se) },
+      ]);
+      if (r) this.model.addPolyFacesAsGroup(r.points, r.faces, '住宅（サンプル）');
+      this.history.commit('サンプル（図面から立体）');
+      this.ui.refreshAll();
+      this.zoomExtents();
+      this.ui.showPanel('sheets');
+      this.ui.toast('平面図・南立面図・東立面図の外形を重ねて立体にしました。「図面から立体」ツール（K）で同じ操作ができます', 9000);
+    } catch (err) {
+      this.ui.alert('サンプルを読み込めません', String((err as Error).message ?? err));
     }
-    const opts = await this.ui.drawingImportDialog(file.name, drawing);
-    if (!opts) return;
-    this.tool.reset();
-    const res = importDrawing(this.model, this.geo, drawing, opts);
-    this.history.commit(`図面読み込み: ${file.name}`);
-    this.ui.refreshAll();
-    this.zoomExtents();
-    this.ui.toast(`読み込み完了: エッジ ${res.edges} 本・面 ${res.faces} 枚。「レイヤー」パネルの「押し出し」で一括立体化できます`, 8000);
-    if (res.faces > 0) this.ui.showPanel('layers');
   }
 
-  // ---- 下図（PDF・画像） ----
+  // ---- 図面シート（平面図・立面図・断面図） ----
 
-  async importUnderlayFile(file: File): Promise<void> {
-    const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    let page = 1;
-    if (isPdf) {
-      const res = await this.ui.form('PDF を下図として読み込み', [
-        { key: 'page', label: 'ページ', type: 'number', value: '1' },
-        { key: 'scale', label: '図面の縮尺 1/', type: 'number', value: '100' },
-      ], { description: '縮尺を入れると用紙サイズから実寸に合わせて配置します。あとで「縮尺合わせ」で 2 点間の寸法から補正できます。' });
-      if (!res) return;
-      page = Number(res.page) || 1;
-      this.ui.toast('PDF を変換しています…');
-      const raster = await rasterizePdf(await file.arrayBuffer(), page);
-      const t = this.viewport.controls.target;
-      const data = underlayFromRaster(file.name, raster, Number(res.scale) || 1, { x: t.x, z: t.z });
-      await this.underlays.add(data);
-    } else {
-      const raster = await loadImage(file);
-      const t = this.viewport.controls.target;
-      // 画像は縮尺不明なので幅 20m 程度で配置し、あとで縮尺合わせ
-      const data = underlayFromRaster(file.name, raster, 1, { x: t.x, z: t.z });
-      data.metersPerPixel = 20 / raster.widthPx;
-      await this.underlays.add(data);
+  /** 立面図などを置くときの基準になる範囲（平面図シートとモデル） */
+  private referenceBox(): Box3 {
+    const box = this.sheets.boundingBox((s) => s.visible && s.view === 'plan');
+    box.union(this.model.boundingBox());
+    return box;
+  }
+
+  /** 図面ファイル（DXF / SFC / PDF / 画像）を図面シートとして読み込む */
+  async importSheetFile(file: File, presetView?: SheetView): Promise<void> {
+    const name = file.name.toLowerCase();
+    const buf = await file.arrayBuffer();
+    const isRaster = name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name);
+    let drawing: Drawing2D | null = null;
+    if (!isRaster) {
+      if (name.endsWith('.sfc')) {
+        const res = await this.ui.form('SXF(SFC) の読み込み', [
+          { key: 'scale', label: '図面の縮尺 1/', type: 'number', value: '100' },
+        ], { description: 'SFC の座標は用紙上の mm です。図面の縮尺を入力してください（例: 1/100 なら 100）。' });
+        if (!res) return;
+        drawing = parseSfc(new TextDecoder('shift_jis').decode(buf), Number(res.scale) || 1);
+      } else {
+        drawing = parseDxf(decodeDxf(buf));
+      }
     }
+    const opt = await this.ui.sheetImportDialog(file.name, drawing, name.endsWith('.pdf'), presetView);
+    if (!opt) return;
+    this.tool.reset();
+    if (opt.mode === 'model' && drawing) {
+      // 従来の方法: 平面図の線をモデルに取り込み、面を張る
+      const res = importDrawing(this.model, this.geo, drawing, opt.model!);
+      this.history.commit(`図面読み込み: ${file.name}`);
+      this.ui.refreshAll();
+      this.zoomExtents();
+      this.ui.toast(`読み込み完了: エッジ ${res.edges} 本・面 ${res.faces} 枚。「レイヤー」パネルの「押し出し」で一括立体化できます`, 8000);
+      if (res.faces > 0) this.ui.showPanel('layers');
+      return;
+    }
+    let data: SheetData;
+    if (drawing) {
+      data = sheetFromDrawing(opt.name, opt.view, drawing, opt.lines!, this.geo);
+    } else if (name.endsWith('.pdf')) {
+      this.ui.toast('PDF を変換しています…');
+      const raster = await rasterizePdf(buf, opt.page);
+      data = sheetFromRaster(opt.name, opt.view, raster, opt.scale);
+    } else {
+      data = sheetFromRaster(opt.name, opt.view, await loadImage(file));
+    }
+    await this.addSheet(data, !(drawing && opt.view === 'plan' && opt.lines?.georeferenced));
+    this.ui.showPanel('sheets');
+    this.ui.toast(
+      data.view === 'plan'
+        ? '平面図を配置しました。続けて立面図・断面図を読み込むと、建物の横に立てて配置します'
+        : `${VIEW_LABEL[data.view]}を立てて配置しました。「位置合わせ」で平面図の通り芯などに合わせ、「高さ合わせ」で GL を 0 にしてください`,
+      9000,
+    );
+  }
+
+  /** 図面シートを追加し、位置を決めて表示 */
+  async addSheet(data: SheetData, autoPlace = true): Promise<Sheet> {
+    if (autoPlace) {
+      if (data.view === 'plan') {
+        // 平面図は画面の中心付近（または既存の平面図の隣）に置く
+        if (!data.segments || !this.sheets.items.some((s) => s.view === 'plan')) {
+          const t = this.viewport.controls.target;
+          if (data.image) data.origin = [t.x - (data.width * data.scale) / 2, data.origin[1], t.z + (data.height * data.scale) / 2];
+        }
+      } else {
+        this.sheets.autoPlace(data, this.referenceBox());
+      }
+    }
+    const s = await this.sheets.add(data);
     this.zoomExtents();
-    this.ui.showPanel('underlays');
-    this.ui.toast('下図を配置しました。「縮尺合わせ」で寸法の分かる 2 点を指定してください', 8000);
+    return s;
   }
 
   // ---- 点群 ----

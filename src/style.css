@@ -142,7 +142,8 @@ select {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .dropdown:focus-within .dropdown-menu,
-.dropdown:hover .dropdown-menu {
+.dropdown:hover .dropdown-menu,
+.dropdown.open .dropdown-menu {
   display: block;
 }
 .dropdown-menu button {
@@ -588,9 +589,6 @@ select {
 
 /* ---- スマホ・タブレット ---- */
 @media (max-width: 820px) {
-  .sidepanel {
-    display: none;
-  }
   .coords {
     display: none;
   }
@@ -614,4 +612,126 @@ select {
   cursor: pointer;
   z-index: 6;
   white-space: nowrap;
+}
+
+/* ---- パネル開閉ボタン（タブレット幅で表示） ---- */
+.panel-toggle {
+  display: none;
+  background: transparent;
+  border-color: transparent;
+  color: #e8eef4;
+  font-size: 18px;
+  padding: 2px 10px;
+}
+
+/* ---- タブレット用の操作バー（タッチ端末で表示） ---- */
+.touchbar {
+  display: none;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+  z-index: 6;
+}
+.touchbar button {
+  min-width: 56px;
+  min-height: 44px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* ---- 右クリックメニュー ---- */
+.context-menu {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.context-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+}
+.context-menu button:hover:not(:disabled) {
+  background: var(--accent-weak);
+}
+
+/* タッチ端末（タブレット）: ボタンを大きく、操作バーを表示 */
+@media (any-pointer: coarse) {
+  .touchbar {
+    display: flex;
+  }
+  .toolbar {
+    width: 72px;
+  }
+  .tool {
+    padding: 8px 2px;
+  }
+  .topbar button,
+  .dropdown-menu button {
+    min-height: 40px;
+  }
+  .vcb-input {
+    min-height: 36px;
+    font-size: 16px; /* iOS で入力時に拡大されないように */
+  }
+  .dropdown:hover .dropdown-menu {
+    display: none;
+  }
+  .dropdown.open .dropdown-menu {
+    display: block;
+  }
+}
+
+/* タブレット幅: サイドパネルは右から出すドロワーに */
+@media (max-width: 1180px) {
+  .panel-toggle {
+    display: inline-block;
+  }
+  .main {
+    position: relative;
+  }
+  .sidepanel {
+    display: flex;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(340px, 88vw);
+    z-index: 30;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
+    transform: translateX(105%);
+    transition: transform 0.2s;
+  }
+  .app.panel-open .sidepanel {
+    transform: none;
+  }
+  .ar-button span {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidepanel {
+    transition: none;
+  }
+}
+
+.row input[type='checkbox'] {
+  flex: 0 0 auto;
+}
+@media (any-pointer: coarse) {
+  .toast {
+    bottom: 120px;
+  }
 }

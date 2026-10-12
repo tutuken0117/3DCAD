@@ -1,5 +1,9 @@
 import './style.css';
 import { App } from './App';
+import { setManifoldWasmUrl } from './core/profileSolid';
+import manifoldWasmUrl from 'manifold-3d/manifold.wasm?url';
+
+setManifoldWasmUrl(manifoldWasmUrl);
 
 const root = document.getElementById('app')!;
 const app = new App(root);

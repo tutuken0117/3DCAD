@@ -202,6 +202,45 @@ export class Model {
     return gid;
   }
 
+  /**
+   * 多角形の面（ブーリアン演算の結果など）を新しいグループとして追加する。
+   * points はローカル座標、faces は points のインデックス。
+   */
+  addPolyFacesAsGroup(
+    points: Vector3[],
+    faces: { outer: number[]; holes: number[][] }[],
+    name: string,
+    layer = this.currentLayer,
+    color?: string,
+  ): number | undefined {
+    if (!faces.length) return undefined;
+    const gid = this.nextId++;
+    this.groups.set(gid, { id: gid, name });
+    const ids = new Map<number, number>();
+    const vid = (i: number) => {
+      let v = ids.get(i);
+      if (v === undefined) {
+        v = this.addVertex(points[i], true, gid);
+        ids.set(i, v);
+      }
+      return v;
+    };
+    let count = 0;
+    for (const f of faces) {
+      const outer = f.outer.map(vid);
+      const holes = f.holes.map((h) => h.map(vid));
+      // 重なった頂点で潰れたループは除く
+      if (new Set(outer).size < 3) continue;
+      if (this.addFaceFromVertices(outer, layer, color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) count++;
+    }
+    if (!count) {
+      this.groups.delete(gid);
+      this.removeUnusedVertices();
+      return undefined;
+    }
+    return gid;
+  }
+
   /** グループを解除する（中身は編集中の階層に戻り、他のジオメトリとくっつく） */
   explodeGroup(gid: number): void {
     if (!this.groups.has(gid)) return;

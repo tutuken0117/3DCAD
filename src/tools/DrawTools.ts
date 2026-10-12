@@ -43,7 +43,8 @@ export class LineTool extends Tool {
     const inf = this.infer(e, this.start ? { from: this.start.point, plane: this.plane } : {});
     if (!this.start) {
       this.start = inf;
-      this.plane = inf.type === 'onFace' ? this.planeFrom(inf) : undefined;
+      // 面や図面シートの上から描き始めたら、その平面上に描く
+      this.plane = inf.type === 'onFace' || inf.type === 'onSheet' || inf.sheet ? this.planeFrom(inf) : undefined;
       this.updateStatus();
       return;
     }
@@ -111,7 +112,7 @@ abstract class PlanarShapeTool extends Tool {
 
   protected setupPlane(inf: InferenceResult): void {
     this.origin = inf.point.clone();
-    this.normal = inf.type === 'onFace' && inf.normal ? inf.normal.clone() : new Vector3(0, 1, 0);
+    this.normal = (inf.type === 'onFace' || inf.type === 'onSheet' || inf.sheet) && inf.normal ? inf.normal.clone() : new Vector3(0, 1, 0);
     const b = planeBasis(this.normal);
     this.u = b.u;
     this.v = b.v;

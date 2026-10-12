@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import { formatCoord, formatLength, parseLength } from '../core/units';
 import { formatDms } from '../geo/jprcs';
-import type { Underlay } from '../view/UnderlayManager';
+import type { Sheet } from '../view/SheetManager';
 import { Tool, type ToolDef } from './Tool';
 
 // ---------------------------------------------------------------------------
@@ -137,31 +137,34 @@ export class PanTool extends Tool {
 }
 
 // ---------------------------------------------------------------------------
-// 下図の位置・縮尺合わせ
+// 図面シートの位置・縮尺合わせ
 // ---------------------------------------------------------------------------
 
-export type UnderlayAdjustMode = 'scale' | 'move' | 'rotate' | 'known';
+export type SheetAdjustMode = 'move' | 'height' | 'scale' | 'rotate' | 'known';
 
-export class UnderlayAdjustTool extends Tool {
-  readonly def: ToolDef = { id: 'underlay-adjust', label: '下図調整', key: '', icon: 'underlay' };
-  vcbLabel = '実寸';
-  target: Underlay | null = null;
-  mode: UnderlayAdjustMode = 'scale';
+export class SheetAdjustTool extends Tool {
+  readonly def: ToolDef = { id: 'sheet-adjust', label: '図面調整', key: '', icon: 'sheet' };
+  vcbLabel = '';
+  target: Sheet | null = null;
+  mode: SheetAdjustMode = 'move';
   private p1: Vector3 | null = null;
   private p2: Vector3 | null = null;
 
   hint(): string {
+    const name = this.target ? `「${this.target.name}」` : '';
     switch (this.mode) {
-      case 'scale':
-        return this.p1
-          ? '寸法の分かっている 2 点目をクリック → 実寸を入力'
-          : '縮尺合わせ: 下図上で寸法の分かっている 1 点目をクリック（例: 寸法線の端）';
       case 'move':
-        return this.p1 ? '移動先をクリック' : '下図の移動: 基準点をクリック';
+        return this.p1
+          ? '合わせ先の点をクリック（例: 平面図の通り芯・建物の角）。図面は自分の面の中だけで動きます'
+          : `${name}の位置合わせ: 図面上の基準点をクリック（例: 通り芯の交点・建物の角）`;
+      case 'height':
+        return `${name}の高さ合わせ: 図面上の地盤線（GL）や基準高さの点をクリック → その点の高さを入力`;
+      case 'scale':
+        return this.p1 ? '寸法の分かっている 2 点目をクリック → 実寸を入力' : `${name}の縮尺合わせ: 寸法の分かっている 1 点目をクリック`;
       case 'rotate':
-        return !this.p1 ? '下図の回転: 回転の中心をクリック' : !this.p2 ? '基準方向をクリック' : '回転後の方向をクリック';
+        return !this.p1 ? `${name}の回転: 回転の中心をクリック` : !this.p2 ? '基準の方向をクリック' : '回転後の方向をクリック';
       case 'known':
-        return '座標の分かっている点（基準点・測点など）を下図上でクリック → 公共座標を入力';
+        return `${name}: 座標の分かっている点（基準点・測点）をクリック → 公共座標を入力`;
     }
   }
 
@@ -174,31 +177,40 @@ export class UnderlayAdjustTool extends Tool {
   onPointerMove(e: PointerEvent): void {
     const inf = this.infer(e, this.p1 ? { from: this.p1 } : {});
     if (this.p1) this.app.overlay.setRubberBand(this.p1, inf.point, inf);
-    if (this.mode === 'rotate' && this.p1 && this.p2) {
-      this.app.overlay.setPreviewLines([], [[this.p1, this.p2]]);
-    }
   }
 
   async onPointerDown(e: PointerEvent): Promise<void> {
     if (e.button !== 0 || !this.target) return;
-    const u = this.target;
+    const s = this.target;
+    const sm = this.app.sheets;
     const inf = this.infer(e, this.p1 ? { from: this.p1 } : {});
     const p = inf.point.clone();
-    const um = this.app.underlays;
-    if (this.mode === 'known') {
-      const geo = this.app.geo;
-      const cur = geo.toPublic(p);
-      const res = await this.app.ui.form('この点の公共座標', [
-        { key: 'X', label: 'X（北）m', type: 'number', value: formatCoord(cur.X) },
-        { key: 'Y', label: 'Y（東）m', type: 'number', value: formatCoord(cur.Y) },
-      ]);
-      if (res) {
-        const target = geo.toLocal({ X: Number(res.X), Y: Number(res.Y), H: geo.toPublic(p).H });
-        um.translate(u, p, target);
-        this.app.ui.toast('下図を移動しました');
+    switch (this.mode) {
+      case 'height': {
+        const res = await this.app.ui.form('高さ合わせ', [
+          { key: 'h', label: 'この点の高さ（m。GL なら 0）', type: 'text', value: '0' },
+        ]);
+        const h = res ? Number(res.h) : NaN;
+        if (Number.isFinite(h)) {
+          sm.translate(s, new Vector3(0, h - p.y, 0));
+          this.app.ui.toast('高さを合わせました');
+        }
+        return this.done();
       }
-      this.done();
-      return;
+      case 'known': {
+        const geo = this.app.geo;
+        const cur = geo.toPublic(p);
+        const res = await this.app.ui.form('この点の公共座標', [
+          { key: 'X', label: 'X（北）m', type: 'number', value: formatCoord(cur.X) },
+          { key: 'Y', label: 'Y（東）m', type: 'number', value: formatCoord(cur.Y) },
+        ]);
+        if (res) {
+          const target = geo.toLocal({ X: Number(res.X), Y: Number(res.Y), H: cur.H });
+          sm.translateInPlane(s, p, target);
+          this.app.ui.toast('図面を移動しました');
+        }
+        return this.done();
+      }
     }
     if (!this.p1) {
       this.p1 = p;
@@ -206,9 +218,9 @@ export class UnderlayAdjustTool extends Tool {
       return;
     }
     if (this.mode === 'move') {
-      um.translate(u, this.p1, p);
-      this.done();
-      return;
+      sm.translateInPlane(s, this.p1, p);
+      this.app.ui.toast('位置を合わせました');
+      return this.done();
     }
     if (this.mode === 'rotate') {
       if (!this.p2) {
@@ -218,19 +230,17 @@ export class UnderlayAdjustTool extends Tool {
       }
       const a1 = Math.atan2(-(this.p2.z - this.p1.z), this.p2.x - this.p1.x);
       const a2 = Math.atan2(-(p.z - this.p1.z), p.x - this.p1.x);
-      um.rotate(u, this.p1, a2 - a1);
-      this.done();
-      return;
+      sm.rotate(s, this.p1, a2 - a1);
+      return this.done();
     }
     // scale
-    this.p2 = p;
-    const cur = Math.hypot(p.x - this.p1.x, p.z - this.p1.z);
+    const cur = this.p1.distanceTo(p);
     const res = await this.app.ui.form('縮尺合わせ', [
       { key: 'len', label: '2 点間の実際の長さ（mm、m 付きも可）', type: 'text', value: String(Math.round(cur * 1000)) },
     ]);
     const len = res ? parseLength(String(res.len), 'mm') : null;
     if (len && len > 0) {
-      um.calibrateScale(u, this.p1, this.p2, len);
+      sm.calibrateScale(s, this.p1, p, len);
       this.app.ui.toast(`縮尺を合わせました（${formatLength(len)}）`);
     }
     this.done();
