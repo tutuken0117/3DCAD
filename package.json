@@ -13,8 +13,11 @@
   },
   "dependencies": {
     "dxf-parser": "^1.1.2",
+    "jspdf": "4.2.1",
+    "jszip": "3.10.1",
     "manifold-3d": "3.5.3",
     "pdfjs-dist": "^6.4.299",
+    "pptxgenjs": "4.0.1",
     "three": "^0.186.1"
   },
   "devDependencies": {

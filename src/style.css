@@ -214,9 +214,79 @@ select {
 .color-row {
   align-items: center;
 }
-.color-row input {
-  width: 40px;
+.paint-swatch {
+  width: 44px;
+  height: 32px;
+  margin: 0 auto;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 0;
+}
+.material-palette {
+  display: none;
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: min(330px, calc(100% - 16px));
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  z-index: 15;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+.palette-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.palette-cat {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.palette-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  font-size: 10px;
+  white-space: normal;
+  line-height: 1.2;
+}
+.palette-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.palette-grid button.active,
+.palette-colors button.active {
+  outline: 2px solid var(--accent);
+}
+.palette-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.palette-colors button {
+  width: 28px;
   height: 28px;
+  padding: 0;
+  border-radius: 50%;
+}
+.palette-colors input {
+  width: 36px;
+  height: 30px;
   border: none;
   padding: 0;
   background: none;
@@ -733,5 +803,177 @@ select {
 @media (any-pointer: coarse) {
   .toast {
     bottom: 120px;
+  }
+}
+
+/* ---- プレゼン ---- */
+.present-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: none;
+  color: #1f2a35;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+.presenting .present-button {
+  background: #ffd96a;
+}
+.presenting .toolbar {
+  display: none;
+}
+.step-no {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+.style-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.style-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  white-space: normal;
+  padding: 8px;
+  min-width: 0;
+}
+.style-card span {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.style-card.active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.row.tight {
+  gap: 4px;
+  margin: 0;
+}
+.row.wrap {
+  flex-wrap: wrap;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0;
+}
+.checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+}
+.scene-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.scene-thumb {
+  flex: 0 0 112px;
+  height: 63px;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.scene-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scene-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.scene-meta input {
+  width: 100%;
+}
+.scene-meta button {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.export-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0;
+}
+.export-grid button {
+  white-space: normal;
+  padding: 8px 6px;
+}
+
+/* ---- スライドショー（全画面） ---- */
+.slideshow .topbar,
+.slideshow .toolbar,
+.slideshow .sidepanel,
+.slideshow .statusbar,
+.slideshow .touchbar,
+.slideshow .context-banner {
+  display: none !important;
+}
+.slideshow-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+.slide-caption {
+  position: absolute;
+  left: 32px;
+  bottom: 32px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1f2a35;
+  font-size: 20px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+.slide-controls {
+  position: absolute;
+  right: 24px;
+  bottom: 28px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+  background: rgba(31, 42, 53, 0.75);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 24px;
+}
+.slide-controls button {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+  min-width: 44px;
+  min-height: 36px;
+}
+@media (max-width: 1180px) {
+  .present-button span {
+    display: none;
   }
 }

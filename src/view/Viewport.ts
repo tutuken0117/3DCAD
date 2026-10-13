@@ -52,6 +52,17 @@ export class Viewport {
   /** グリッドと軸 */
   readonly helpersRoot = new Group();
 
+  /** 照明（プレゼン表示で太陽の向きや強さを変える） */
+  readonly lights = {
+    hemi: new HemisphereLight(0xffffff, 0x8899aa, 1.6),
+    amb: new AmbientLight(0xffffff, 0.6),
+    sun: new DirectionalLight(0xffffff, 1.6),
+    fill: new DirectionalLight(0xffffff, 0.5),
+  };
+  /** 通常の描画の代わりに使う描画処理（陰影強調などの後処理） */
+  customRender: (() => void) | null = null;
+  private readonly resizeListeners = new Set<(w: number, h: number) => void>();
+
   private readonly frameCallbacks = new Set<(time: number, frame?: XRFrame) => void>();
   private needsRender = true;
 
@@ -100,13 +111,10 @@ export class Viewport {
   }
 
   private setupLights(): void {
-    const hemi = new HemisphereLight(0xffffff, 0x8899aa, 1.6);
-    const amb = new AmbientLight(0xffffff, 0.6);
-    const sun = new DirectionalLight(0xffffff, 1.6);
+    const { hemi, amb, sun, fill } = this.lights;
     sun.position.set(30, 60, 40);
-    const fill = new DirectionalLight(0xffffff, 0.5);
     fill.position.set(-40, 20, -30);
-    this.scene.add(hemi, amb, sun, fill);
+    this.scene.add(hemi, amb, sun, fill, sun.target);
   }
 
   private setupHelpers(): void {
@@ -160,7 +168,8 @@ export class Viewport {
     for (const fn of this.frameCallbacks) fn(time, xrFrame);
     if (this.renderer.xr.isPresenting || this.needsRender) {
       this.needsRender = false;
-      this.renderer.render(this.scene, this.camera);
+      if (this.customRender && !this.renderer.xr.isPresenting) this.customRender();
+      else this.renderer.render(this.scene, this.camera);
     }
   }
 
@@ -177,10 +186,20 @@ export class Viewport {
     this.perspCamera.aspect = w / h;
     this.perspCamera.updateProjectionMatrix();
     this.updateOrthoFrustum();
+    for (const fn of this.resizeListeners) fn(w, h);
     this.requestRender();
   }
 
-  private updateOrthoFrustum(): void {
+  onResize(fn: (w: number, h: number) => void): void {
+    this.resizeListeners.add(fn);
+  }
+
+  /** 画面サイズの変更を反映し直す（画像書き出しの後など） */
+  refreshSize(): void {
+    this.resize();
+  }
+
+  updateOrthoFrustum(): void {
     const { x: w, y: h } = this.size;
     const dist = this.orthoCamera.position.distanceTo(this.controls.target);
     const halfH = Math.max(0.5, dist * Math.tan((this.perspCamera.fov * Math.PI) / 360));

@@ -2,6 +2,8 @@ import type { ModelData } from '../core/Model';
 import type { GeoReferenceData } from '../geo/GeoReference';
 import type { SheetData, sheetFromLegacyUnderlay } from '../view/SheetManager';
 import type { AxisOrder } from '../view/PointCloudManager';
+import type { RenderSettings } from '../view/Presentation';
+import type { SceneData } from '../view/Scenes';
 
 export const PROJECT_EXT = '.3dcad.json';
 
@@ -19,6 +21,10 @@ export interface ProjectFile {
   /** 点群はサイズが大きいので参照情報のみ保存（開くときに再読み込み） */
   pointClouds: { name: string; georeferenced: boolean; axisOrder: AxisOrder; count: number }[];
   camera?: { position: number[]; target: number[] };
+  /** 保存した視点（プレゼン用） */
+  scenes?: SceneData[];
+  /** プレゼン表示の設定 */
+  render?: Partial<RenderSettings>;
 }
 
 export function parseProject(text: string): ProjectFile {

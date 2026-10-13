@@ -12,6 +12,19 @@ import type { SheetLineOptions } from '../io/sheetImport';
 import type { FaceStyle } from '../view/ModelRenderer';
 import type { StandardView } from '../view/Viewport';
 import { ICONS } from './icons';
+import { FINISH_PRESETS } from '../core/materials';
+import { STYLE_LABEL, type RenderSettings } from '../view/Presentation';
+import {
+  exportCurrentImage,
+  exportImagesZip,
+  exportPdf,
+  exportPptx,
+  exportVideo,
+  IMAGE_SIZES,
+  type ImageSizeKey,
+} from '../io/presentationExport';
+import { MAT_PREFIX, MATERIALS, materialOf } from '../core/materials';
+import { materialSwatch } from '../view/materialTextures';
 
 export interface FormField {
   key: string;
@@ -27,7 +40,7 @@ export interface FormOptions {
   cancelLabel?: string;
 }
 
-type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'sheets' | 'help';
+type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'sheets' | 'present' | 'help';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -46,7 +59,7 @@ function h<K extends keyof HTMLElementTagNameMap>(
 /** 画面の部品（メニュー・ツールバー・パネル・ステータスバー・ダイアログ） */
 export class UI {
   readonly viewportEl: HTMLDivElement;
-  paintColor = '#c8a46e';
+  paintColor = 'mat:plaster-white';
 
   private root: HTMLElement;
   private hintEl!: HTMLDivElement;
@@ -63,6 +76,8 @@ export class UI {
   private fileInput!: HTMLInputElement;
   private undoBtn!: HTMLButtonElement;
   private contextEl!: HTMLDivElement;
+  private paintSwatch!: HTMLButtonElement;
+  private paletteEl: HTMLDivElement | null = null;
   private redoBtn!: HTMLButtonElement;
 
   constructor(
@@ -135,6 +150,7 @@ export class UI {
         </div>
         <button data-act="zoom" class="icon" title="全体表示 (Shift+Z)">${ICONS.zoom}</button>
       </div>
+      <button class="present-button" data-act="present">${ICONS.present}<span>プレゼン資料を作る</span></button>
       <button class="ar-button" data-act="ar">${ICONS.ar}<span>AR で見る</span></button>`;
     this.root.appendChild(header);
 
@@ -163,9 +179,9 @@ export class UI {
       toolbar.appendChild(grp);
     }
     const colorRow = h('div', { class: 'tool-group color-row' });
-    const color = h('input', { type: 'color', value: this.paintColor, title: 'ペイントの色' }) as HTMLInputElement;
-    color.addEventListener('input', () => (this.paintColor = color.value));
-    colorRow.appendChild(color);
+    this.paintSwatch = h('button', { class: 'paint-swatch', title: '塗る材料・色を選ぶ' }) as HTMLButtonElement;
+    this.paintSwatch.addEventListener('click', () => this.togglePalette());
+    colorRow.appendChild(this.paintSwatch);
     toolbar.appendChild(colorRow);
 
     const side = h('aside', { class: 'sidepanel' });
@@ -176,6 +192,7 @@ export class UI {
       ['geo', '座標系'],
       ['pointclouds', '点群'],
       ['sheets', '図面'],
+      ['present', 'プレゼン'],
       ['help', '使い方'],
     ];
     for (const [id, label] of panels) {
@@ -267,6 +284,10 @@ export class UI {
         this.toast(app.viewport.isOrtho ? '平行投影' : '透視投影');
       }
       if (act === 'ar') void app.ar.start();
+      if (act === 'present') {
+        if (app.presentation.active) app.exitPresentation();
+        else app.enterPresentation();
+      }
       if (b.dataset.exp) void app.exportAs(b.dataset.exp as Parameters<App['exportAs']>[0]);
       if (b.dataset.view) app.viewport.setStandardView(b.dataset.view as StandardView);
       if (b.dataset.style) app.renderer.setFaceStyle(b.dataset.style as FaceStyle);
@@ -287,8 +308,10 @@ export class UI {
     app.geo.onChange(() => this.refreshPanel(['geo']));
     app.pointClouds.onChange(() => this.refreshPanel(['pointclouds']));
     app.sheets.onChange(() => this.refreshPanel(['sheets']));
+    app.scenes.onChange(() => this.refreshPanel(['present']));
     this.showPanel('entity');
     this.refreshAll();
+    this.updatePaintSwatch();
   }
 
   private updateUndo(): void {
@@ -350,8 +373,62 @@ export class UI {
 
   setPaintColor(c: string): void {
     this.paintColor = c;
-    const input = this.root.querySelector<HTMLInputElement>('.color-row input');
-    if (input) input.value = c;
+    this.updatePaintSwatch();
+  }
+
+  private updatePaintSwatch(): void {
+    if (!this.paintSwatch) return;
+    const def = materialOf(this.paintColor);
+    this.paintSwatch.style.background = def ? `url(${materialSwatch(def)}) center/cover` : this.paintColor;
+    this.paintSwatch.title = `塗る材料・色: ${def ? def.name : this.paintColor}（クリックで選ぶ）`;
+  }
+
+  /** 材料パレット（ペイントツール用） */
+  togglePalette(show?: boolean): void {
+    if (!this.paletteEl) {
+      const el = h('div', { class: 'material-palette' });
+      const cats = [...new Set(MATERIALS.map((m) => m.category))];
+      el.innerHTML = `
+        <div class="palette-head"><b>材料・色を選ぶ</b><button data-close title="閉じる">×</button></div>
+        ${cats
+          .map(
+            (c) => `<div class="palette-cat">${esc(c)}</div><div class="palette-grid">
+              ${MATERIALS.filter((m) => m.category === c)
+                .map((m) => `<button data-mat="${m.id}" title="${esc(m.name)}"><img src="${materialSwatch(m)}" alt=""><span>${esc(m.name)}</span></button>`)
+                .join('')}
+            </div>`,
+          )
+          .join('')}
+        <div class="palette-cat">色</div>
+        <div class="palette-colors">
+          ${['#f4f2ea', '#ffffff', '#d9d4c7', '#9aa3ab', '#4a4f55', '#2b2d30', '#c8a46e', '#8c5a3c', '#a33b2b', '#d9a441', '#5f8f4e', '#3e6e9e']
+            .map((c) => `<button data-col="${c}" style="background:${c}" title="${c}"></button>`)
+            .join('')}
+          <input type="color" data-custom value="#c8a46e" title="好きな色">
+        </div>
+        <div class="row"><button data-apply class="primary">選択中の面に塗る</button></div>
+        <p class="muted small">選んでから面をクリックすると塗れます。選択中の面にまとめて塗ることもできます。</p>`;
+      el.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest('button');
+        if (!b) return;
+        if (b.dataset.close !== undefined) return this.togglePalette(false);
+        if (b.dataset.apply !== undefined) return this.app.paintSelection(this.paintColor);
+        const v = b.dataset.mat ? MAT_PREFIX + b.dataset.mat : b.dataset.col;
+        if (!v) return;
+        this.setPaintColor(v);
+        el.querySelectorAll('.active').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+        if (this.app.tool.def.id !== 'paint') this.app.setTool('paint');
+      });
+      el.querySelector<HTMLInputElement>('[data-custom]')!.addEventListener('input', (e) => {
+        this.setPaintColor((e.target as HTMLInputElement).value);
+        if (this.app.tool.def.id !== 'paint') this.app.setTool('paint');
+      });
+      this.viewportEl.appendChild(el);
+      this.paletteEl = el;
+    }
+    const visible = show ?? this.paletteEl.style.display !== 'block';
+    this.paletteEl.style.display = visible ? 'block' : 'none';
   }
 
   toast(msg: string, ms = 3000): void {
@@ -667,7 +744,7 @@ export class UI {
   }
 
   refreshAll(): void {
-    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'sheets', 'help']);
+    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'sheets', 'present', 'help']);
   }
 
   private refreshPanel(ids: PanelId[]): void {
@@ -677,7 +754,8 @@ export class UI {
       const body = this.panelBodies.get(id);
       if (!body) continue;
       // 入力中の要素があれば描き直さない（入力が消えるため）
-      if (body.contains(document.activeElement) && (document.activeElement as HTMLElement).tagName === 'INPUT') continue;
+      const ae = document.activeElement as HTMLInputElement | null;
+      if (ae && body.contains(ae) && ae.tagName === 'INPUT' && (ae.type === 'text' || ae.type === '')) continue;
       switch (id) {
         case 'entity':
           this.renderEntity(body);
@@ -693,6 +771,9 @@ export class UI {
           break;
         case 'sheets':
           this.renderSheets(body);
+          break;
+        case 'present':
+          this.renderPresent(body);
           break;
         case 'help':
           this.renderHelp(body);
@@ -1002,8 +1083,274 @@ export class UI {
     });
   }
 
+  /** プレゼン表示に入った／出た */
+  setPresenting(on: boolean): void {
+    this.root.classList.toggle('presenting', on);
+    const b = this.root.querySelector<HTMLButtonElement>('[data-act=present] span');
+    if (b) b.textContent = on ? '編集に戻る' : 'プレゼン資料を作る';
+    if (on) {
+      this.showPanel('present');
+      this.root.classList.add('panel-open');
+      this.setHint('左ドラッグで視点を回す・右ドラッグで移動・ホイールでズーム。右の「プレゼン」パネルで ① 見た目 → ② 視点 → ③ 書き出し');
+    } else {
+      this.app.tool.updateStatus();
+    }
+  }
+
+  private renderPresent(body: HTMLDivElement): void {
+    const app = this.app;
+    const p = app.presentation;
+    const st = p.settings;
+    if (!p.active) {
+      body.innerHTML = `
+        <h3>プレゼン資料を作る</h3>
+        <p class="muted">作った 3D モデルを、写真のような画像・白模型・スケッチ風の絵にして、PowerPoint・PDF・画像・動画で書き出せます。初めてでも 3 つの手順で完成します。</p>
+        <ol class="steps"><li>見た目を選ぶ</li><li>視点を決める（自動でも作れます）</li><li>書き出す</li></ol>
+        <div class="row"><button data-start class="primary">はじめる</button></div>`;
+      body.querySelector('[data-start]')!.addEventListener('click', () => app.enterPresentation());
+      return;
+    }
+    const sun = p.sun();
+    const hh = Math.floor(st.hour);
+    const mm = Math.round((st.hour - hh) * 60);
+    const styles = Object.entries(STYLE_LABEL) as [RenderSettings['style'], { name: string; desc: string }][];
+    const sizes = Object.entries(IMAGE_SIZES) as [ImageSizeKey, { label: string }][];
+    body.innerHTML = `
+      <h3><span class="step-no">1</span>見た目を選ぶ</h3>
+      <div class="style-cards">
+        ${styles
+          .map(
+            ([id, s]) => `<button class="style-card ${st.style === id ? 'active' : ''}" data-style-pick="${id}">
+              <b>${s.name}</b><span>${s.desc}</span></button>`,
+          )
+          .join('')}
+      </div>
+      ${
+        st.style === 'real'
+          ? `<label class="form-row"><span>おまかせ仕上げ</span><select data-preset>
+              ${FINISH_PRESETS.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join('')}
+            </select></label>
+            <div class="row"><button data-finish class="primary">壁・屋根・窓に材料を付ける</button><button data-paint>手で塗る</button></div>
+            <p class="muted small">面の向きから外壁・屋根・窓（押し込んだ開口）・地面を自動で判定します。選択中の面があればその面だけ。あとから「手で塗る」で個別に変えられます。</p>`
+          : ''
+      }
+      <label class="form-row"><span>日時（日本時間）</span>
+        <span class="row tight">
+          <select data-month>${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${st.month === i + 1 ? 'selected' : ''}>${i + 1}月</option>`).join('')}</select>
+          <select data-day>${[1, 5, 10, 15, 20, 21, 25].map((d) => `<option value="${d}" ${st.day === d ? 'selected' : ''}>${d}日</option>`).join('')}</select>
+        </span></label>
+      <label class="form-row"><span>時刻 <b data-time>${hh}:${String(mm).padStart(2, '0')}</b></span>
+        <input type="range" min="6" max="18" step="0.25" value="${st.hour}" data-hour></label>
+      <p class="muted small">太陽の高さ ${sun.altitude.toFixed(0)}°・方位 ${sun.azimuth.toFixed(0)}°（モデルの位置の緯度経度で計算）${sun.altitude < 4 ? '　<b>太陽が沈んでいます</b>' : ''}</p>
+      <div class="row wrap">
+        <button data-preset-time="4,20,10">春の朝</button>
+        <button data-preset-time="6,21,12">夏の昼</button>
+        <button data-preset-time="10,15,15.5">秋の午後</button>
+        <button data-preset-time="12,21,12">冬至の昼</button>
+      </div>
+      <label class="form-row"><span>地面</span><select data-ground>
+        ${[
+          ['grass', '芝生'],
+          ['paving', '舗装（タイル）'],
+          ['plain', '無地'],
+          ['none', 'なし'],
+        ]
+          .map(([v, l]) => `<option value="${v}" ${st.ground === v ? 'selected' : ''}>${l}</option>`)
+          .join('')}
+      </select></label>
+      <div class="checks">
+        <label><input type="checkbox" data-opt="shadows" ${st.shadows ? 'checked' : ''}> 影</label>
+        <label><input type="checkbox" data-opt="edges" ${st.edges ? 'checked' : ''}> 線を表示</label>
+        <label><input type="checkbox" data-opt="high" ${st.high ? 'checked' : ''}> 高品質（陰影を強調）</label>
+        <label><input type="checkbox" data-opt="showPointClouds" ${st.showPointClouds ? 'checked' : ''}> 点群</label>
+        <label><input type="checkbox" data-opt="showSheets" ${st.showSheets ? 'checked' : ''}> 図面</label>
+      </div>
+
+      <h3><span class="step-no">2</span>視点を決める</h3>
+      <div class="row wrap"><button data-auto class="primary">おすすめの視点を自動で作る</button><button data-add>今の視点を追加</button></div>
+      <p class="muted small">画面を左ドラッグで回し、ホイールで寄って、気に入った角度で「今の視点を追加」。</p>
+      <div class="scene-list">
+        ${app.scenes.items
+          .map(
+            (sc, i) => `<div class="scene-item" data-id="${sc.id}">
+              <button class="scene-thumb" data-go title="この視点を見る">${sc.thumbnail ? `<img src="${sc.thumbnail}" alt="">` : '<span>▶</span>'}</button>
+              <div class="scene-meta">
+                <input data-name value="${esc(sc.name)}" aria-label="シーン名">
+                <div class="row tight">
+                  <button data-up title="前へ" ${i === 0 ? 'disabled' : ''}>↑</button>
+                  <button data-down title="後へ" ${i === app.scenes.items.length - 1 ? 'disabled' : ''}>↓</button>
+                  <button data-update title="今の視点で上書き">更新</button>
+                  <button data-del title="削除">×</button>
+                </div>
+              </div>
+            </div>`,
+          )
+          .join('')}
+      </div>
+
+      <h3><span class="step-no">3</span>書き出す</h3>
+      <label class="form-row"><span>画像の大きさ</span><select data-size>
+        ${sizes.map(([k, v]) => `<option value="${k}" ${k === this.exportSize ? 'selected' : ''}>${v.label}</option>`).join('')}
+      </select></label>
+      <div class="checks">
+        <label><input type="checkbox" data-caption ${this.exportCaption ? 'checked' : ''}> 右下に名前と日付を入れる</label>
+        <label><input type="checkbox" data-transparent ${this.exportTransparent ? 'checked' : ''}> 背景を透明に（画像のみ）</label>
+      </div>
+      <div class="export-grid">
+        <button data-exp-pptx class="primary">PowerPoint（.pptx）</button>
+        <button data-exp-pdf>PDF</button>
+        <button data-exp-zip>全視点の画像（ZIP）</button>
+        <button data-exp-png>今の画面を画像に</button>
+        <button data-exp-video>動画（視点をめぐる）</button>
+        <button data-slideshow>スライドショー</button>
+      </div>
+      <p class="muted small">視点が 1 つも無いときは、おすすめの視点を自動で作ってから書き出します。プロジェクト名（ファイル名）は「保存」時の名前です: <b>${esc(app.projectName)}</b></p>
+      <div class="row"><button data-exit>編集に戻る</button></div>`;
+
+    const $ = <T extends HTMLElement>(sel: string) => body.querySelector<T>(sel);
+    body.querySelectorAll<HTMLButtonElement>('[data-style-pick]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const style = b.dataset.stylePick as RenderSettings['style'];
+        // 白模型は線があると形が読みやすい。リアルは線なしが自然
+        app.updateRender({ style, edges: style === 'white' });
+        this.refreshPanel(['present']);
+      }),
+    );
+    $('[data-finish]')?.addEventListener('click', () => app.applyAutoFinish($<HTMLSelectElement>('[data-preset]')!.value));
+    $('[data-paint]')?.addEventListener('click', () => app.setTool('paint'));
+    const setTime = () => {
+      app.updateRender({
+        month: Number($<HTMLSelectElement>('[data-month]')!.value),
+        day: Number($<HTMLSelectElement>('[data-day]')!.value),
+        hour: Number($<HTMLInputElement>('[data-hour]')!.value),
+      });
+    };
+    $('[data-month]')!.addEventListener('change', () => (setTime(), this.refreshPanel(['present'])));
+    $('[data-day]')!.addEventListener('change', () => (setTime(), this.refreshPanel(['present'])));
+    $<HTMLInputElement>('[data-hour]')!.addEventListener('input', (e) => {
+      const v = Number((e.target as HTMLInputElement).value);
+      const h = Math.floor(v);
+      $('[data-time]')!.textContent = `${h}:${String(Math.round((v - h) * 60)).padStart(2, '0')}`;
+      setTime();
+    });
+    $('[data-hour]')!.addEventListener('change', () => this.refreshPanel(['present']));
+    body.querySelectorAll<HTMLButtonElement>('[data-preset-time]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const [m, d, h] = b.dataset.presetTime!.split(',').map(Number);
+        app.updateRender({ month: m, day: d, hour: h });
+        this.refreshPanel(['present']);
+      }),
+    );
+    $<HTMLSelectElement>('[data-ground]')!.addEventListener('change', (e) => app.updateRender({ ground: (e.target as HTMLSelectElement).value as RenderSettings['ground'] }));
+    body.querySelectorAll<HTMLInputElement>('[data-opt]').forEach((c) =>
+      c.addEventListener('change', () => app.updateRender({ [c.dataset.opt!]: c.checked } as Partial<RenderSettings>)),
+    );
+    $('[data-auto]')!.addEventListener('click', () => app.autoScenes());
+    $('[data-add]')!.addEventListener('click', () => app.addCurrentScene());
+    body.querySelectorAll<HTMLDivElement>('.scene-item').forEach((row) => {
+      const sc = app.scenes.items.find((x) => x.id === Number(row.dataset.id))!;
+      row.querySelector('[data-go]')!.addEventListener('click', () => void app.scenes.goTo(sc));
+      row.querySelector<HTMLInputElement>('[data-name]')!.addEventListener('change', (e) => {
+        sc.name = (e.target as HTMLInputElement).value.trim() || sc.name;
+        app.scenes.emit();
+      });
+      row.querySelector('[data-up]')!.addEventListener('click', () => app.scenes.move(sc, -1));
+      row.querySelector('[data-down]')!.addEventListener('click', () => app.scenes.move(sc, 1));
+      row.querySelector('[data-del]')!.addEventListener('click', () => app.scenes.remove(sc));
+      row.querySelector('[data-update]')!.addEventListener('click', () => {
+        const cam = app.viewport.camera.position;
+        const t = app.viewport.controls.target;
+        sc.position = [cam.x, cam.y, cam.z];
+        sc.target = [t.x, t.y, t.z];
+        void app.makeThumbnails([sc]);
+      });
+    });
+    $<HTMLSelectElement>('[data-size]')!.addEventListener('change', (e) => (this.exportSize = (e.target as HTMLSelectElement).value as ImageSizeKey));
+    $<HTMLInputElement>('[data-caption]')!.addEventListener('change', (e) => (this.exportCaption = (e.target as HTMLInputElement).checked));
+    $<HTMLInputElement>('[data-transparent]')!.addEventListener('change', (e) => (this.exportTransparent = (e.target as HTMLInputElement).checked));
+    const opts = () => ({ size: this.exportSize, caption: this.exportCaption, transparent: this.exportTransparent });
+    const run = (label: string, fn: (progress: (i: number, n: number) => void) => Promise<void>) => async () => {
+      if (app.model.isEmpty()) return this.toast('モデルがありません');
+      this.toast(`${label}を作成しています…`, 60000);
+      try {
+        await fn((i, n) => this.toast(`${label}を作成しています… ${i + 1} / ${n}`, 60000));
+        this.toast(`${label}を書き出しました`);
+      } catch (err) {
+        console.error(err);
+        this.alert('書き出しエラー', esc(String((err as Error).message ?? err)));
+      }
+    };
+    $('[data-exp-pptx]')!.addEventListener('click', run('PowerPoint', (pr) => exportPptx(app, opts(), pr)));
+    $('[data-exp-pdf]')!.addEventListener('click', run('PDF', (pr) => exportPdf(app, opts(), pr)));
+    $('[data-exp-zip]')!.addEventListener('click', run('画像', (pr) => exportImagesZip(app, opts(), pr)));
+    $('[data-exp-png]')!.addEventListener('click', run('画像', () => exportCurrentImage(app, opts())));
+    $('[data-exp-video]')!.addEventListener('click', run('動画', (pr) => exportVideo(app, pr)));
+    $('[data-slideshow]')!.addEventListener('click', () => this.startSlideshow());
+    $('[data-exit]')!.addEventListener('click', () => app.exitPresentation());
+  }
+
+  exportSize: ImageSizeKey = 'fhd';
+  exportCaption = true;
+  exportTransparent = false;
+
+  /** スライドショー: 全画面で視点を順に見せる（会議でそのまま説明できる） */
+  startSlideshow(): void {
+    const app = this.app;
+    if (!app.scenes.items.length) app.autoScenes();
+    const scenes = app.scenes.items;
+    if (!scenes.length) return this.toast('視点がありません');
+    let i = 0;
+    const overlay = h('div', { class: 'slideshow-ui' });
+    overlay.innerHTML = `
+      <div class="slide-caption"></div>
+      <div class="slide-controls">
+        <button data-prev title="前へ（←）">◀</button>
+        <span data-count></span>
+        <button data-next title="次へ（→・スペース）">▶</button>
+        <button data-end title="終了（Esc）">終了</button>
+      </div>`;
+    this.viewportEl.appendChild(overlay);
+    this.root.classList.add('slideshow');
+    app.viewport.refreshSize();
+    const show = (k: number, animate = true) => {
+      i = (k + scenes.length) % scenes.length;
+      overlay.querySelector('.slide-caption')!.textContent = scenes[i].name;
+      overlay.querySelector('[data-count]')!.textContent = `${i + 1} / ${scenes.length}`;
+      void app.scenes.goTo(scenes[i], animate, 1600);
+    };
+    const end = () => {
+      overlay.remove();
+      this.root.classList.remove('slideshow');
+      window.removeEventListener('keydown', onKey, true);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      setTimeout(() => app.viewport.refreshSize(), 50);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (['ArrowRight', ' ', 'PageDown', 'Enter'].includes(e.key)) show(i + 1);
+      else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) show(i - 1);
+      else if (e.key === 'Escape') end();
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    overlay.querySelector('[data-next]')!.addEventListener('click', () => show(i + 1));
+    overlay.querySelector('[data-prev]')!.addEventListener('click', () => show(i - 1));
+    overlay.querySelector('[data-end]')!.addEventListener('click', end);
+    void this.root.requestFullscreen?.().catch(() => undefined).finally(() => app.viewport.refreshSize());
+    show(0, false);
+  }
+
   private renderHelp(body: HTMLDivElement): void {
     body.innerHTML = `
+      <h3>プレゼン資料を作る（初めてでも 3 ステップ）</h3>
+      <ol class="steps">
+        <li>右上の「プレゼン資料を作る」を押す</li>
+        <li><b>見た目を選ぶ</b>: リアル（材料と太陽の光・影）／白模型／スケッチ。リアルは「壁・屋根・窓に材料を付ける」で自動で仕上げ</li>
+        <li><b>視点を決める</b>: 「おすすめの視点を自動で作る」で鳥瞰・人の目線・真上がそろう。好きな角度は「今の視点を追加」</li>
+        <li><b>書き出す</b>: PowerPoint・PDF・画像（ZIP）・動画、または「スライドショー」でそのまま会議で説明</li>
+      </ol>
+      <p class="muted">日時を変えると、その日・その時刻の太陽の位置で影が付きます（モデルの位置の緯度経度で計算。日影の検討にも）。</p>
       <h3>平面図・立面図・断面図から 3D を作る</h3>
       <ol class="steps">
         <li>「読み込み → 図面」で平面図を開く（DXF / SXF / PDF / 画像）。地面に水平に置かれます</li>

@@ -34,6 +34,10 @@ import { Overlay } from './view/Overlay';
 import { PointCloudManager, type AxisOrder } from './view/PointCloudManager';
 import { SheetManager, sheetFromLegacyUnderlay, VIEW_LABEL, type Sheet, type SheetData, type SheetView } from './view/SheetManager';
 import { Viewport } from './view/Viewport';
+import { Presentation, type RenderSettings } from './view/Presentation';
+import { recommendedViews, SceneManager, type SceneView } from './view/Scenes';
+import { autoFinish } from './core/autoFinish';
+import { FINISH_PRESETS } from './core/materials';
 
 /** アプリ全体をつなぐクラス */
 export class App {
@@ -49,6 +53,8 @@ export class App {
   readonly overlay: Overlay;
   readonly ui: UI;
   readonly ar: ARViewer;
+  readonly presentation: Presentation;
+  readonly scenes: SceneManager;
   readonly tools = new Map<string, Tool>();
   tool!: Tool;
   projectName = '無題';
@@ -67,6 +73,8 @@ export class App {
     this.inference = new Inference(this.viewport, this.model, this.renderer, this.pointClouds, this.sheets);
     this.overlay = new Overlay(this.viewport);
     this.ar = new ARViewer(this);
+    this.presentation = new Presentation(this);
+    this.scenes = new SceneManager(this.viewport);
 
     for (const t of [
       new SelectTool(this),
@@ -100,6 +108,7 @@ export class App {
     });
     this.geo.onChange(() => this.scheduleAutosave());
     this.sheets.onChange(() => this.scheduleAutosave());
+    this.scenes.onChange(() => this.scheduleAutosave());
   }
 
   // ------------------------------------------------------------------
@@ -259,6 +268,16 @@ export class App {
     this.history.commit('削除');
   }
 
+  /** 選択中の面に材料・色を塗る */
+  paintSelection(color: string): void {
+    if (!this.selection.faces.size) return this.ui.toast('先に面を選択してください（選択ツール: スペースキー）');
+    for (const id of this.selection.faces) {
+      const f = this.model.faces.get(id);
+      if (f) f.color = color;
+    }
+    this.history.commit('ペイント');
+  }
+
   /** 選択した面を押し出す（数値指定） */
   extrudeSelection(distance: number): void {
     const faces = [...this.selection.faces];
@@ -268,6 +287,71 @@ export class App {
     }
     this.selection.clear();
     this.history.commit('押し出し');
+  }
+
+  // ------------------------------------------------------------------
+  // プレゼン（見せるための表示・視点・資料の書き出し）
+  // ------------------------------------------------------------------
+
+  enterPresentation(): void {
+    if (this.presentation.active) return;
+    this.setTool('select');
+    this.presentation.enter();
+    // 左ドラッグで視点を回す（編集はしない）
+    this.viewport.setNavigationMode('orbit');
+    this.ui.setPresenting(true);
+    if (!this.scenes.items.length && !this.model.isEmpty()) this.autoScenes();
+  }
+
+  exitPresentation(): void {
+    if (!this.presentation.active) return;
+    this.presentation.exit();
+    this.viewport.setNavigationMode('default');
+    this.setTool('select');
+    this.ui.setPresenting(false);
+  }
+
+  updateRender(partial: Partial<RenderSettings>): void {
+    this.presentation.update(partial);
+    this.scheduleAutosave();
+  }
+
+  /** おまかせ仕上げ（材料の自動割り当て） */
+  applyAutoFinish(presetId: string): void {
+    const preset = FINISH_PRESETS.find((p) => p.id === presetId) ?? FINISH_PRESETS[0];
+    const ids = this.selection.faces.size ? [...this.selection.faces] : undefined;
+    const n = autoFinish(this.model, preset, ids);
+    this.history.commit('おまかせ仕上げ');
+    this.ui.toast(n ? `${n} 面に材料を付けました（${preset.name}）` : '材料を付ける面がありません');
+  }
+
+  /** おすすめの視点を追加 */
+  autoScenes(): void {
+    const views = recommendedViews(this.model.boundingBox(), this.viewport.perspCamera.fov);
+    if (!views.length) return this.ui.toast('モデルがありません');
+    const added = views.map((v) => this.scenes.add(v));
+    void this.makeThumbnails(added);
+  }
+
+  addCurrentScene(): void {
+    const s = this.scenes.addCurrent();
+    void this.makeThumbnails([s]);
+  }
+
+  /** 一覧用の小さな画像（今の表示スタイルで描く） */
+  async makeThumbnails(list: SceneView[]): Promise<void> {
+    const vp = this.viewport;
+    const keepP = vp.camera.position.clone();
+    const keepT = vp.controls.target.clone();
+    for (const s of list) {
+      await this.scenes.goTo(s, false);
+      s.thumbnail = this.presentation.renderImage({ width: 320, height: 180 }).toDataURL('image/jpeg', 0.8);
+    }
+    vp.camera.position.copy(keepP);
+    vp.controls.target.copy(keepT);
+    vp.controls.update();
+    vp.requestRender();
+    this.scenes.emit();
   }
 
   // ------------------------------------------------------------------
@@ -385,6 +469,8 @@ export class App {
     this.model.clear();
     for (const c of [...this.pointClouds.clouds]) this.pointClouds.remove(c);
     void this.sheets.load([]);
+    this.scenes.load([]);
+    this.exitPresentation();
     this.geo.load({});
     this.history.reset();
     this.projectName = '無題';
@@ -401,6 +487,8 @@ export class App {
       model: this.model.toJSON(),
       geo: this.geo.toJSON(),
       sheets: this.sheets.toJSON(),
+      scenes: this.scenes.toJSON(),
+      render: this.presentation.settings,
       pointClouds: [
         ...this.pointClouds.clouds.map((c) => ({
           name: c.name,
@@ -419,6 +507,8 @@ export class App {
     this.geo.load(p.geo);
     this.model.load(p.model);
     await this.sheets.load([...(p.sheets ?? []), ...(p.underlays ?? []).map(sheetFromLegacyUnderlay)]);
+    this.scenes.load(p.scenes ?? []);
+    if (p.render) this.presentation.settings = { ...this.presentation.settings, ...p.render };
     this.pointCloudRefs = p.pointClouds ?? [];
     this.history.reset();
     if (p.camera) {

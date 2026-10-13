@@ -469,8 +469,18 @@ export class EraserTool extends Tool {
 export class PaintTool extends Tool {
   readonly def: ToolDef = { id: 'paint', label: 'ペイント', key: 'B', icon: 'paint' };
 
+  activate(): void {
+    super.activate();
+    this.app.ui.togglePalette(true);
+  }
+
+  deactivate(): void {
+    super.deactivate();
+    this.app.ui.togglePalette(false);
+  }
+
   hint(): string {
-    return '面をクリックして色を塗ります（選択中の面をクリックすると選択した面すべて）。Alt+クリックで色を拾う';
+    return '面をクリックして材料・色を塗ります（左下の見本で選ぶ。選択中の面をクリックすると選択した面すべて、グループならグループ全体）。Alt+クリックで面の材料を拾う';
   }
 
   onPointerMove(e: PointerEvent): void {

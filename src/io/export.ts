@@ -13,7 +13,10 @@ import {
 } from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
+import { planeBasis } from '../core/geometry';
+import { baseColorOf, materialOf } from '../core/materials';
 import type { Model } from '../core/Model';
+import { materialTexture } from '../view/materialTextures';
 import type { GeoReference } from '../geo/GeoReference';
 import { FRONT_COLOR } from '../view/ModelRenderer';
 
@@ -41,29 +44,54 @@ export interface ExportScene {
 export function buildExportScene(model: Model, opt: ExportSceneOptions): ExportScene {
   const group = new Group();
   group.name = 'Model';
-  const byColor = new Map<string, number[]>();
-  const normals = new Map<string, number[]>();
+  // 色（または材料）ごとにメッシュを分ける。材料はテクスチャ付きで書き出す
+  type Bucket = { pos: number[]; nrm: number[]; uv: number[] };
+  const buckets = new Map<string, Bucket>();
   for (const f of model.faces.values()) {
     if (!model.isLayerVisible(f.layer)) continue;
     const { points: pts, tris, normal: n } = model.faceTriangles(f);
     if (n.lengthSq() === 0) continue;
-    const color = opt.useLayerColors ? (model.layers.get(f.layer)?.color ?? FRONT_COLOR) : (f.color ?? FRONT_COLOR);
-    if (!byColor.has(color)) (byColor.set(color, []), normals.set(color, []));
-    const pos = byColor.get(color)!;
-    const nrm = normals.get(color)!;
+    const key = opt.useLayerColors ? (model.layers.get(f.layer)?.color ?? FRONT_COLOR) : (f.color ?? FRONT_COLOR);
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { pos: [], nrm: [], uv: [] }));
+    const { u, v } = planeBasis(n);
     for (const tri of tris) {
       for (const i of tri) {
-        pos.push(pts[i].x, pts[i].y, pts[i].z);
-        nrm.push(n.x, n.y, n.z);
+        b.pos.push(pts[i].x, pts[i].y, pts[i].z);
+        b.nrm.push(n.x, n.y, n.z);
+        b.uv.push(pts[i].dot(u), pts[i].dot(v));
       }
     }
   }
   let k = 0;
-  for (const [color, pos] of byColor) {
+  const side = opt.doubleSided === false ? FrontSide : DoubleSide;
+  for (const [key, b] of buckets) {
     const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-    g.setAttribute('normal', new Float32BufferAttribute(normals.get(color)!, 3));
-    const mesh = new Mesh(g, new MeshStandardMaterial({ color, roughness: 0.85, metalness: 0, side: opt.doubleSided === false ? FrontSide : DoubleSide }));
+    g.setAttribute('position', new Float32BufferAttribute(b.pos, 3));
+    g.setAttribute('normal', new Float32BufferAttribute(b.nrm, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(b.uv, 2));
+    const def = materialOf(key);
+    let mat: MeshStandardMaterial;
+    if (def) {
+      // 書き出し用は UV 自体をタイル寸法で割る（ビューア側で repeat が無視される形式があるため）
+      const uv = g.getAttribute('uv') as Float32BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / def.tile, uv.getY(i) / def.tile);
+      const tex = materialTexture(def)?.clone();
+      if (tex) tex.repeat.set(1, 1);
+      mat = new MeshStandardMaterial({
+        color: tex ? '#ffffff' : def.color,
+        map: tex ?? null,
+        roughness: def.roughness,
+        metalness: def.metalness,
+        transparent: def.opacity !== undefined,
+        opacity: def.opacity ?? 1,
+        side,
+      });
+      mat.name = def.name;
+    } else {
+      mat = new MeshStandardMaterial({ color: baseColorOf(key, FRONT_COLOR), roughness: 0.85, metalness: 0, side });
+    }
+    const mesh = new Mesh(g, mat);
     mesh.name = `faces_${k++}`;
     group.add(mesh);
   }

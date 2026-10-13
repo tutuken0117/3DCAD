@@ -10,10 +10,15 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  MeshStandardMaterial,
+  type Material,
   type Raycaster,
   Vector3,
 } from 'three';
+import { planeBasis } from '../core/geometry';
+import { getMaterial, MAT_PREFIX } from '../core/materials';
 import type { Model } from '../core/Model';
+import { threeMaterial } from './materialTextures';
 import type { Selection } from '../core/Selection';
 import type { Viewport } from './Viewport';
 
@@ -40,19 +45,28 @@ export class ModelRenderer {
   private triFace: number[] = [];
 
   faceStyle: FaceStyle = 'shaded';
+  /** プレゼン表示（影・両面同じ見た目・裏面色なし） */
+  presentation = false;
+  /** 白模型（材料・色を使わず白で表示） */
+  whiteModel = false;
+  /** プレゼン表示で線を出すか */
+  showEdges = true;
+
+  private baseMat: MeshStandardMaterial;
+  private baseMatDouble: MeshStandardMaterial;
+  private whiteMat: MeshStandardMaterial;
 
   constructor(
     private viewport: Viewport,
     private model: Model,
     private selection: Selection,
   ) {
-    const frontMat = new MeshLambertMaterial({
-      vertexColors: true,
-      side: FrontSide,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    });
+    const std = (opts: ConstructorParameters<typeof MeshStandardMaterial>[0]) =>
+      new MeshStandardMaterial({ roughness: 0.92, metalness: 0, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, ...opts });
+    this.baseMat = std({ vertexColors: true, side: FrontSide });
+    this.baseMatDouble = std({ vertexColors: true, side: DoubleSide });
+    this.whiteMat = std({ color: '#eceae6', side: DoubleSide, roughness: 0.95 });
+    const frontMat = this.baseMat;
     const backMat = new MeshLambertMaterial({
       color: BACK_COLOR,
       side: BackSide,
@@ -95,10 +109,10 @@ export class ModelRenderer {
 
   setFaceStyle(style: FaceStyle): void {
     this.faceStyle = style;
-    const fm = this.front.material as MeshLambertMaterial;
+    const fm = this.baseMat;
     const bm = this.back.material as MeshLambertMaterial;
     const xray = style === 'xray';
-    for (const m of [fm, bm]) {
+    for (const m of [fm, this.baseMatDouble, bm]) {
       m.transparent = xray;
       m.opacity = xray ? 0.45 : 1;
       m.depthWrite = !xray;
@@ -110,38 +124,80 @@ export class ModelRenderer {
 
   rebuild(): void {
     const m = this.model;
-    const pos: number[] = [];
-    const col: number[] = [];
-    const nrm: number[] = [];
-    this.triFace = [];
+    // 材料ごとに三角形をまとめ、BufferGeometry のグループで描き分ける
+    type Bucket = { pos: number[]; nrm: number[]; col: number[]; uv: number[]; faces: number[] };
+    const buckets = new Map<string, Bucket>();
+    const bucket = (key: string) => {
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, (b = { pos: [], nrm: [], col: [], uv: [], faces: [] }));
+      return b;
+    };
     const c = new Color();
     // グループ編集中は、編集対象以外を薄く表示する
     const fade = new Color('#e9eef2');
     const editing = m.activeGroup;
+    const useMaterials = this.faceStyle === 'shaded' && !this.whiteModel;
     for (const f of m.faces.values()) {
       if (!m.isLayerVisible(f.layer)) continue;
       const { points: pts, tris, normal: n } = m.faceTriangles(f);
       if (n.lengthSq() === 0) continue;
-      const colorStr = this.faceStyle === 'layer' ? (m.layers.get(f.layer)?.color ?? FRONT_COLOR) : (f.color ?? FRONT_COLOR);
+      const matId = useMaterials && f.color?.startsWith(MAT_PREFIX) ? f.color.slice(MAT_PREFIX.length) : '';
+      const key = this.whiteModel ? 'white' : matId && getMaterial(matId) ? matId : '';
+      const colorStr = this.faceStyle === 'layer' ? (m.layers.get(f.layer)?.color ?? FRONT_COLOR) : f.color?.startsWith('#') ? f.color : FRONT_COLOR;
       c.set(colorStr);
       if (editing && m.groupOfFace(f) !== editing) c.lerp(fade, 0.65);
+      const { u, v } = planeBasis(n);
+      const b = bucket(key);
       for (const tri of tris) {
         for (const i of tri) {
-          pos.push(pts[i].x, pts[i].y, pts[i].z);
-          nrm.push(n.x, n.y, n.z);
-          col.push(c.r, c.g, c.b);
+          const p = pts[i];
+          b.pos.push(p.x, p.y, p.z);
+          b.nrm.push(n.x, n.y, n.z);
+          b.col.push(c.r, c.g, c.b);
+          b.uv.push(p.dot(u), p.dot(v));
         }
-        this.triFace.push(f.id);
+        b.faces.push(f.id);
       }
     }
+    let total = 0;
+    for (const b of buckets.values()) total += b.pos.length / 3;
+    const pos = new Float32Array(total * 3);
+    const nrm = new Float32Array(total * 3);
+    const col = new Float32Array(total * 3);
+    const uvs = new Float32Array(total * 2);
+    this.triFace = [];
     const g = new BufferGeometry();
+    const materials: Material[] = [];
+    let start = 0;
+    for (const [key, b] of buckets) {
+      pos.set(b.pos, start * 3);
+      nrm.set(b.nrm, start * 3);
+      col.set(b.col, start * 3);
+      uvs.set(b.uv, start * 2);
+      for (const id of b.faces) this.triFace.push(id);
+      let mat: Material;
+      if (key === 'white') mat = this.whiteMat;
+      else if (key) mat = threeMaterial(getMaterial(key)!, this.presentation);
+      else mat = this.presentation ? this.baseMatDouble : this.baseMat;
+      const count = b.pos.length / 3;
+      g.addGroup(start, count, materials.length);
+      materials.push(mat);
+      start += count;
+    }
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));
     g.setAttribute('normal', new Float32BufferAttribute(nrm, 3));
     g.setAttribute('color', new Float32BufferAttribute(col, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
     g.computeBoundingSphere();
     this.front.geometry.dispose();
     this.front.geometry = g;
+    this.front.material = materials.length ? materials : this.baseMat;
     this.back.geometry = g;
+    this.back.visible = !this.presentation && this.faceStyle !== 'wireframe';
+    this.front.castShadow = this.front.receiveShadow = this.presentation;
+    this.edges.visible = !this.presentation || this.showEdges;
+    // プレゼン表示の線は少し柔らかい色に
+    (this.edges.material as LineBasicMaterial).color.set(this.presentation ? 0x60656a : 0x1a1a1a);
 
     // エッジ: 曲面の稜線（隣接面の角度が小さい）は表示しない
     const facesByEdge = new Map<string, Vector3[]>();
@@ -224,10 +280,16 @@ export class ModelRenderer {
     this.buildOverlay(faceIds, edgeIds, this.hoverFaces, this.hoverEdges);
   }
 
+  /** 表示中のエッジ（稜線）の座標 [x1,y1,z1,x2,y2,z2,…]（スケッチ表示の太い線に使う） */
+  edgePositions(): Float32Array {
+    const a = this.edges.geometry.getAttribute('position');
+    return a ? (a.array as Float32Array) : new Float32Array();
+  }
+
   /** レイが当たった面 */
   pickFace(rc: Raycaster): { faceId: number; point: Vector3; normal: Vector3; distance: number } | null {
     if (this.faceStyle === 'wireframe') return null;
-    const hits = rc.intersectObjects([this.front, this.back], false);
+    const hits = rc.intersectObjects(this.back.visible ? [this.front, this.back] : [this.front], false);
     for (const h of hits) {
       if (h.faceIndex == null) continue;
       const faceId = this.triFace[h.faceIndex];
