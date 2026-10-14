@@ -31,7 +31,7 @@ export function isStandalone(): boolean {
 
 /** すぐに呼ぶ（インストールの案内イベントを取りこぼさないため） */
 export function setupPwa(app: App): void {
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register(`./sw.js?v=${__BUILD_ID__}`).catch((e) => console.warn('サービスワーカーの登録に失敗', e));
   }
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -69,6 +69,12 @@ export async function promptInstall(app: App): Promise<void> {
  * ファイルを開いたら true（前回の続きの復元はしない）。
  */
 export function handleLaunch(app: App): Promise<boolean> {
+  // 1 ファイル版に埋め込んだプロジェクト（開くとすぐ表示）
+  const embedded = (window as unknown as { __AUTO_OPEN?: { name: string; text: string } }).__AUTO_OPEN;
+  if (embedded) {
+    void app.openAnyFile(new File([embedded.text], embedded.name));
+    return Promise.resolve(true);
+  }
   const q = new URLSearchParams(location.search);
   if (q.get('sample') === 'house') {
     void app.loadHouseSample();

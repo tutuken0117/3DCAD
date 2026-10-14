@@ -1130,3 +1130,13 @@ select {
   background: #f3f5f7;
   border-radius: 6px;
 }
+
+.button-link {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}

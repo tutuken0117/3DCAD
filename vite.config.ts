@@ -24,16 +24,32 @@ function precache(): Plugin {
   };
 }
 
+/**
+ * npm run build:single → 1 つの HTML ファイルだけで動く版（ダブルクリックで開ける・オフライン）。
+ * JS・CSS・wasm・PDF の worker をすべて埋め込む（scripts/make-single.mjs で仕上げ）。
+ */
+const single = process.env.SINGLE === '1';
+
 export default defineConfig({
   base: './',
   // samples/ のファイルをそのまま配信（「サンプルを開く」・アイコン・manifest・サービスワーカー）
   publicDir: 'samples',
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
-  plugins: [precache()],
-  build: {
-    target: 'es2022',
-    chunkSizeWarningLimit: 2000,
-  },
+  plugins: single ? [] : [precache()],
+  build: single
+    ? {
+        target: 'es2022',
+        outDir: 'dist-single',
+        assetsInlineLimit: () => true,
+        cssCodeSplit: false,
+        copyPublicDir: false,
+        chunkSizeWarningLimit: 20000,
+        rollupOptions: { output: { inlineDynamicImports: true } },
+      }
+    : {
+        target: 'es2022',
+        chunkSizeWarningLimit: 2000,
+      },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

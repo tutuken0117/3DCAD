@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # 1 ファイル版（ダウンロードしてダブルクリックで開ける・オフライン）
+      - run: npm run build:single && cp 3DCAD.html dist/3DCAD.html
       - run: touch dist/.nojekyll
       - uses: actions/configure-pages@v5
         with:

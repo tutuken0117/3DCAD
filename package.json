@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:single": "SINGLE=1 vite build && node scripts/make-single.mjs 3DCAD.html"
   },
   "dependencies": {
     "dxf-parser": "^1.1.2",
