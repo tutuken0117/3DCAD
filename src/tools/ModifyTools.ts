@@ -480,7 +480,7 @@ export class PaintTool extends Tool {
   }
 
   hint(): string {
-    return '面をクリックして材料・色を塗ります（左下の見本で選ぶ。選択中の面をクリックすると選択した面すべて、グループならグループ全体）。Alt+クリックで面の材料を拾う';
+    return '面をクリックして材料・色を塗ります（見本で選ぶ。グループなら同じ材料の面がまとめて変わる。選択中の面をクリックすると選択した面すべて）。Alt+クリックで面の材料を拾う';
   }
 
   onPointerMove(e: PointerEvent): void {
@@ -499,10 +499,12 @@ export class PaintTool extends Tool {
       return;
     }
     const color = this.app.ui.paintColor;
-    // 選択中の面ならまとめて、グループの面ならグループ全体を塗る
+    // 選択中の面ならまとめて塗る。グループの面なら、グループの中で同じ材料の面をまとめて塗る
+    // （外壁をクリックすると外壁だけが変わり、窓枠や破風板はそのまま）
+    const before = m.faces.get(hit.faceId)?.color;
     const ids = this.app.selection.faces.has(hit.faceId)
       ? [...this.app.selection.faces]
-      : this.app.expandPick({ face: hit.faceId }).faces;
+      : this.app.expandPick({ face: hit.faceId }).faces.filter((id) => m.faces.get(id)?.color === before);
     for (const id of ids) {
       const f = m.faces.get(id);
       if (f) f.color = color;

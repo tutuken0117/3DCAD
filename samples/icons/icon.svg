@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 3DCAD のアイコン: 青焼きの図面（2D）から立ち上がる建物（3D）と太陽（レンダリング） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b4562"/>
+      <stop offset="1" stop-color="#16222f"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#ffc35c"/>
+      <stop offset="1" stop-color="#ffc35c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="roofA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f97ff"/>
+      <stop offset="1" stop-color="#1f6fff"/>
+    </linearGradient>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <!-- 方眼 -->
+    <g stroke="#ffffff" stroke-opacity="0.06" stroke-width="2">
+      <path d="M64 0V512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512M448 0V512"/>
+      <path d="M0 64H512M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M0 448H512"/>
+    </g>
+    <!-- 太陽 -->
+    <circle cx="398" cy="118" r="62" fill="url(#sun)" opacity="0.55"/>
+    <circle cx="398" cy="118" r="30" fill="#ffc35c"/>
+    <g transform="translate(250 300) scale(1.1) translate(-250 -300)">
+    <!-- 図面（平面図のシート） -->
+    <path d="M230 225 L438 345 L265 445 L57 325 Z" fill="#7fb6ff" fill-opacity="0.12" stroke="#8cc2ff" stroke-width="5" stroke-linejoin="round"/>
+    <g stroke="#8cc2ff" stroke-width="3" stroke-dasharray="10 8" fill="none" opacity="0.8">
+      <path d="M208 262 L405 376"/>
+      <path d="M118 314 L208 262"/>
+    </g>
+    <!-- 影 -->
+    <path d="M278 393 L364 343 L420 375 L335 425 Z" fill="#0b131b" opacity="0.35"/>
+    <!-- 建物 -->
+    <path d="M148 318 L278 393 L278 303 L148 228 Z" fill="#eef3f8"/>
+    <path d="M278 393 L364 343 L364 253 L321 218 L278 303 Z" fill="#b9cadb"/>
+    <path d="M148 228 L278 303 L321 218 L191 143 Z" fill="url(#roofA)"/>
+    <path d="M148 228 L278 303 L321 218" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="3" stroke-linejoin="round"/>
+    <!-- 窓と入口 -->
+    <path d="M165 298 L191 313 L191 278 L165 263 Z" fill="#2f5d8f"/>
+    <path d="M217 328 L243 343 L243 308 L217 293 Z" fill="#2f5d8f"/>
+    <path d="M291 385 L312 373 L312 318 L291 330 Z" fill="#26384b"/>
+    <path d="M330 362 L350 350 L350 318 L330 330 Z" fill="#2f5d8f"/>
+    </g>
+  </g>
+</svg>

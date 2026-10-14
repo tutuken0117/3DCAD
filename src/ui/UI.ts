@@ -25,6 +25,7 @@ import {
 } from '../io/presentationExport';
 import { MAT_PREFIX, MATERIALS, materialOf } from '../core/materials';
 import { materialSwatch } from '../view/materialTextures';
+import { isStandalone, promptInstall } from '../pwa';
 
 export interface FormField {
   key: string;
@@ -150,6 +151,7 @@ export class UI {
         </div>
         <button data-act="zoom" class="icon" title="全体表示 (Shift+Z)">${ICONS.zoom}</button>
       </div>
+      <button class="install-button" data-act="install" hidden title="デスクトップのアプリとしてインストール（専用ウィンドウ・オフラインで起動）">${ICONS.install}<span>アプリにする</span></button>
       <button class="present-button" data-act="present">${ICONS.present}<span>プレゼン資料を作る</span></button>
       <button class="ar-button" data-act="ar">${ICONS.ar}<span>AR で見る</span></button>`;
     this.root.appendChild(header);
@@ -284,6 +286,7 @@ export class UI {
         this.toast(app.viewport.isOrtho ? '平行投影' : '透視投影');
       }
       if (act === 'ar') void app.ar.start();
+      if (act === 'install') void promptInstall(app);
       if (act === 'present') {
         if (app.presentation.active) app.exitPresentation();
         else app.enterPresentation();
@@ -429,6 +432,12 @@ export class UI {
     }
     const visible = show ?? this.paletteEl.style.display !== 'block';
     this.paletteEl.style.display = visible ? 'block' : 'none';
+  }
+
+  /** 「アプリにする」ボタンの表示（ブラウザがインストールできると知らせてきたとき） */
+  setInstallable(on: boolean): void {
+    const b = this.root.querySelector<HTMLButtonElement>('[data-act=install]');
+    if (b) b.hidden = !on || isStandalone();
   }
 
   toast(msg: string, ms = 3000): void {
@@ -1343,6 +1352,19 @@ export class UI {
 
   private renderHelp(body: HTMLDivElement): void {
     body.innerHTML = `
+      <h3 id="install-help">デスクトップのアプリとして使う</h3>
+      ${
+        isStandalone()
+          ? '<p class="muted">アプリとして起動しています。ネットにつながっていなくても使えます。</p>'
+          : `<ol class="steps">
+        <li>PC の <b>Chrome</b> か <b>Edge</b> でこのページを開く</li>
+        <li>右上の「アプリにする」、またはアドレスバー右端の <b>インストール</b> アイコン（画面に↓の印）を押す</li>
+        <li>「インストール」を押すと、専用のウィンドウで開き、デスクトップ・スタートメニュー（Mac は Launchpad）に <b>3DCAD</b> のアイコンができます</li>
+        <li>タスクバー（Mac は Dock）のアイコンを右クリック →「タスクバーにピン留め」（Mac は「Dock に追加」）でいつでも起動</li>
+      </ol>
+      <p class="muted">インストール後は、ネットにつながっていなくても起動でき、.3dcad・.jww・.dxf ファイルをダブルクリック（または「プログラムから開く → 3DCAD」）で開けます。iPad は Safari の共有ボタン →「ホーム画面に追加」。</p>
+      <div class="row"><button data-install-help class="primary">アプリにする</button></div>`
+      }
       <h3>プレゼン資料を作る（初めてでも 3 ステップ）</h3>
       <ol class="steps">
         <li>右上の「プレゼン資料を作る」を押す</li>
@@ -1393,5 +1415,6 @@ export class UI {
       <p class="muted">作図中にそのまま数字を打って Enter（右下の欄に入ります）。単位は mm。「1.5m」のように単位も付けられます。長方形は「3000,2000」。プッシュ/プル直後に数字を打つと押し出し量を修正できます。</p>
       <h3>推定（スナップ）の色</h3>
       <p class="muted"><span style="color:#00b050">●</span> 端点　<span style="color:#00b8d9">●</span> 中点　<span style="color:#e0301e">●</span> エッジ上　<span style="color:#2a64d8">●</span> 面上　<span style="color:#ff8c00">●</span> 点群</p>`;
+    body.querySelector('[data-install-help]')?.addEventListener('click', () => void promptInstall(this.app));
   }
 }
