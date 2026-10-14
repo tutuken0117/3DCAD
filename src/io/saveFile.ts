@@ -46,6 +46,17 @@ const TYPES: Record<string, PickerType> = {
 
 const extOf = (name: string) => name.slice(name.lastIndexOf('.') + 1).toLowerCase();
 
+type ArtifactDownloads = { save(r: { filename: string; data: Blob }): Promise<unknown> };
+let artifactDl: Promise<ArtifactDownloads | null> | null = null;
+
+/** claude.ai の Artifact の中で開かれているときだけ、ダウンロード機能を返す */
+function artifactDownloads(): Promise<ArtifactDownloads | null> {
+  const cl = (window as unknown as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+  if (!cl?.use) return Promise.resolve(null);
+  artifactDl ??= cl.use('downloads').then((d) => (d as ArtifactDownloads | null) ?? null).catch(() => null);
+  return artifactDl;
+}
+
 /** 場所と名前を選ぶ画面が使えるか（PC の Chrome / Edge） */
 export function canPickLocation(): boolean {
   return typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function' && window.top === window;
@@ -87,6 +98,23 @@ export async function writeHandle(handle: FileHandleLike, blob: Blob): Promise<v
  * group: 前回のフォルダを覚える単位（'project' / 'export'）
  */
 export async function chooseSaveTarget(filename: string, opt: { group?: string; ask?: boolean } = {}): Promise<SaveTarget | null> {
+  // claude.ai の Artifact として開いているとき: そのページのダウンロード機能で保存する
+  const dl = await artifactDownloads();
+  if (dl) {
+    return {
+      name: filename,
+      async write(b) {
+        try {
+          await dl.save({ filename, data: b });
+        } catch (e) {
+          const code = (e as { code?: string }).code;
+          if (code === 'declined') throw Object.assign(new Error('保存を取りやめました'), { name: 'AbortError' });
+          if (code === 'rejected_extension') throw new Error(`このページでは「${extOf(filename)}」形式のファイルは保存できません。公開版（tutuken0117.github.io/3DCAD）で書き出してください`);
+          throw new Error((e as Error).message || '保存できませんでした');
+        }
+      },
+    };
+  }
   const ask = opt.ask ?? saveMode() === 'ask';
   if (ask && canPickLocation()) {
     const picker = (window as unknown as { showSaveFilePicker: SavePicker }).showSaveFilePicker;
