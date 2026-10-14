@@ -7,9 +7,12 @@ import { intersectProfiles } from './core/profileSolid';
 import { GeoReference } from './geo/GeoReference';
 import { parseDxf, decodeDxf } from './io/dxf';
 import { parseJww } from './io/jww';
+import { loadMaterialSettings, materialSettings, onMaterialsChange } from './core/materials';
+import { readMaterialDefaults } from './io/userSettings';
 import type { Drawing2D } from './io/drawing2d';
 import { extrudeLayer, importDrawing } from './io/drawingImport';
-import { downloadBlob, exportDXF, exportGLB, exportOBJ, exportUSDZ } from './io/export';
+import { exportDXF, exportGLB, exportOBJ, exportUSDZ } from './io/export';
+import { chooseSaveTarget, pickOpenFile, writeHandle, type FileHandleLike } from './io/saveFile';
 import { parsePointCloud, parseTextPoints, detectPointCloudFormat } from './io/pointcloud';
 import {
   clearAutosave,
@@ -122,6 +125,22 @@ export class App {
     this.geo.onChange(() => this.scheduleAutosave());
     this.sheets.onChange(() => this.scheduleAutosave());
     this.scenes.onChange(() => this.scheduleAutosave());
+    // 材料の色を変えたら描き直す（この端末の標準の色から始める）
+    loadMaterialSettings(readMaterialDefaults());
+    let pending = false;
+    onMaterialsChange(() => {
+      // 色をドラッグで変えている間は 1 フレームに 1 回だけ描き直す
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        this.renderer.rebuild();
+        if (this.presentation.active) this.presentation.update({});
+        this.ui.setPaintColor(this.ui.paintColor);
+        this.viewport.requestRender();
+        this.scheduleAutosave();
+      });
+    });
   }
 
   // ------------------------------------------------------------------
@@ -196,7 +215,7 @@ export class App {
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) return (e.preventDefault(), this.undo());
       if (k === 'y' || (k === 'z' && e.shiftKey)) return (e.preventDefault(), this.redo());
-      if (k === 's') return (e.preventDefault(), this.saveProject());
+      if (k === 's') return (e.preventDefault(), void this.saveProject(e.shiftKey));
       if (k === 'o') return (e.preventDefault(), this.ui.pickFile('open'));
       if (k === 'a' && !inInput) return (e.preventDefault(), this.selection.selectAll());
       if (k === 'g' && !e.shiftKey) return (e.preventDefault(), this.makeGroupFromSelection());
@@ -456,10 +475,10 @@ export class App {
   // ファイル
   // ------------------------------------------------------------------
 
-  async openAnyFile(file: File): Promise<void> {
+  async openAnyFile(file: File, handle?: FileHandleLike): Promise<void> {
     const name = file.name.toLowerCase();
     try {
-      if (name.endsWith('.json') || name.endsWith('.3dcad')) return await this.openProject(file);
+      if (name.endsWith('.json') || name.endsWith('.3dcad')) return await this.openProject(file, handle);
       if (name.endsWith('.dxf') || name.endsWith('.sfc') || name.endsWith('.jww') || name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
         return await this.importSheetFile(file);
       }
@@ -487,8 +506,10 @@ export class App {
     this.scenes.load([]);
     this.exitPresentation();
     this.geo.load({});
+    loadMaterialSettings(readMaterialDefaults());
     this.history.reset();
     this.projectName = '無題';
+    this.projectHandle = null;
     this.ui.refreshAll();
     void clearAutosave();
   }
@@ -504,6 +525,7 @@ export class App {
       sheets: this.sheets.toJSON(),
       scenes: this.scenes.toJSON(),
       render: this.presentation.settings,
+      materials: materialSettings(),
       pointClouds: [
         ...this.pointClouds.clouds.map((c) => ({
           name: c.name,
@@ -520,6 +542,7 @@ export class App {
   async loadProjectFile(p: ProjectFile): Promise<void> {
     this.tool.reset();
     this.geo.load(p.geo);
+    loadMaterialSettings(p.materials ?? readMaterialDefaults());
     this.model.load(p.model);
     await this.sheets.load([...(p.sheets ?? []), ...(p.underlays ?? []).map(sheetFromLegacyUnderlay)]);
     this.scenes.load(p.scenes ?? []);
@@ -538,21 +561,54 @@ export class App {
     }
   }
 
-  async openProject(file: File): Promise<void> {
+  /** 開いている（または保存した）プロジェクトファイル。上書き保存に使う */
+  projectHandle: FileHandleLike | null = null;
+
+  async openProject(file: File, handle?: FileHandleLike): Promise<void> {
     const p = parseProject(await file.text());
     this.projectName = file.name.replace(/\.3dcad\.json$|\.json$|\.3dcad$/i, '');
     await this.loadProjectFile(p);
+    this.projectHandle = handle ?? null;
     this.ui.toast(`開きました: ${file.name}`);
   }
 
-  saveProject(): void {
-    const json = JSON.stringify(this.toProjectFile());
-    downloadBlob(new Blob([json], { type: 'application/json' }), `${this.projectName}${PROJECT_EXT}`);
-    this.ui.toast(
-      window.top !== window
-        ? 'この埋め込み表示ではファイルを保存できない場合があります（作業はブラウザ内に自動保存されます）'
-        : 'プロジェクトを保存しました',
-    );
+  /** 「開く」: 使えるならファイルの場所も覚える（上書き保存できる） */
+  async openProjectDialog(): Promise<void> {
+    const picked = await pickOpenFile();
+    if (picked === undefined) return this.ui.pickFile('open');
+    if (!picked) return;
+    try {
+      await this.openProject(picked.file, picked.handle);
+    } catch (err) {
+      this.ui.alert('読み込みエラー', String((err as Error).message ?? err));
+    }
+  }
+
+  /**
+   * プロジェクトを保存。開いたファイル・前に保存したファイルがあれば上書き、
+   * なければ（または saveAs）保存場所を選ぶ。
+   */
+  async saveProject(saveAs = false): Promise<void> {
+    const blob = () => new Blob([JSON.stringify(this.toProjectFile())], { type: 'application/json' });
+    try {
+      if (this.projectHandle && !saveAs) {
+        await writeHandle(this.projectHandle, blob());
+        this.ui.toast(`上書き保存しました: ${this.projectHandle.name}`);
+        return;
+      }
+      const target = await chooseSaveTarget(`${this.projectName}${PROJECT_EXT}`, { group: 'project', ask: saveAs ? true : undefined });
+      if (!target) return this.ui.toast('保存を取りやめました');
+      await target.write(blob());
+      if (target.handle) {
+        this.projectHandle = target.handle;
+        this.projectName = target.name.replace(/\.3dcad\.json$|\.json$|\.3dcad$/i, '');
+      }
+      this.ui.toast(target.handle ? `保存しました: ${target.name}` : `保存しました（ダウンロード）: ${target.name}`);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return this.ui.toast('保存を取りやめました');
+      console.error(err);
+      this.ui.alert('保存できませんでした', `${String((err as Error).message ?? err)}<br>作業はブラウザ内に自動保存されています。`);
+    }
   }
 
   private scheduleAutosave(): void {
@@ -770,23 +826,28 @@ export class App {
 
   async exportAs(kind: 'glb' | 'usdz' | 'obj' | 'obj-local' | 'dxf' | 'dxf-local'): Promise<void> {
     const base = this.projectName;
+    const ext = kind.replace('-local', '');
+    // 保存場所は、クリックした直後に選ぶ（作るのに時間がかかっても選べるように）
+    const target = await chooseSaveTarget(`${base}.${ext}`);
+    if (!target) return this.ui.toast('書き出しを取りやめました');
     try {
+      let blob: Blob;
       switch (kind) {
         case 'glb':
-          downloadBlob(await exportGLB(this.model, this.geo, { centerOnOrigin: true, includeEdges: false, scale: 1 }), `${base}.glb`);
+          blob = await exportGLB(this.model, this.geo, { centerOnOrigin: true, includeEdges: false, scale: 1 });
           break;
         case 'usdz':
-          downloadBlob(await exportUSDZ(this.model, { centerOnOrigin: true, includeEdges: false, scale: 1 }), `${base}.usdz`);
+          blob = await exportUSDZ(this.model, { centerOnOrigin: true, includeEdges: false, scale: 1 });
           break;
         case 'obj':
         case 'obj-local':
-          downloadBlob(new Blob([exportOBJ(this.model, this.geo, kind === 'obj')], { type: 'text/plain' }), `${base}.obj`);
+          blob = new Blob([exportOBJ(this.model, this.geo, kind === 'obj')], { type: 'text/plain' });
           break;
-        case 'dxf':
-        case 'dxf-local':
-          downloadBlob(new Blob([exportDXF(this.model, this.geo, kind === 'dxf')], { type: 'application/dxf' }), `${base}.dxf`);
-          break;
+        default:
+          blob = new Blob([exportDXF(this.model, this.geo, kind === 'dxf')], { type: 'application/dxf' });
       }
+      await target.write(blob);
+      this.ui.toast(`書き出しました: ${target.name}`);
     } catch (err) {
       console.error(err);
       this.ui.alert('書き出しエラー', String((err as Error).message ?? err));

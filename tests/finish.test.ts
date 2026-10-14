@@ -54,3 +54,32 @@ describe('おまかせ仕上げ', () => {
     expect(front.color).toBe('mat:' + preset.wall);
   });
 });
+
+describe('材料の設定', () => {
+  it('色を変える・戻す・自分の材料を作る・保存して読み直す', async () => {
+    const mat = await import('../src/core/materials');
+    mat.loadMaterialSettings(undefined);
+    const before = mat.getMaterial('siding-white')!.color;
+    mat.setMaterialOverride('siding-white', { color: '#123456', tile: 2.4 });
+    expect(mat.getMaterial('siding-white')!.color).toBe('#123456');
+    expect(mat.materialOf('mat:siding-white')!.tile).toBe(2.4);
+    expect(mat.isMaterialModified('siding-white')).toBe(true);
+    const c = mat.addCustomMaterial(mat.getMaterial('brick-red')!, 'うちのレンガ', '#884422');
+    expect(mat.allMaterials().some((m) => m.id === c.id && m.custom)).toBe(true);
+    const saved = JSON.parse(JSON.stringify(mat.materialSettings()));
+    mat.loadMaterialSettings(undefined);
+    expect(mat.getMaterial('siding-white')!.color).toBe(before);
+    expect(mat.getMaterial(c.id)).toBeUndefined();
+    mat.loadMaterialSettings(saved);
+    expect(mat.getMaterial('siding-white')!.color).toBe('#123456');
+    expect(mat.getMaterial(c.id)!.name).toBe('うちのレンガ');
+    mat.resetMaterial('siding-white');
+    expect(mat.getMaterial('siding-white')!.color).toBe(before);
+    mat.loadMaterialSettings(undefined);
+  });
+  it('材料は 50 種類以上・分類はすべて決まった名前', async () => {
+    const mat = await import('../src/core/materials');
+    expect(mat.MATERIALS.length).toBeGreaterThanOrEqual(50);
+    for (const m of mat.MATERIALS) expect(mat.MATERIAL_CATEGORIES).toContain(m.category);
+  });
+});

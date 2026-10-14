@@ -1,4 +1,5 @@
 import type { App } from './App';
+import type { FileHandleLike } from './io/saveFile';
 
 /**
  * デスクトップ（PC・タブレット）のアプリとして使うための仕組み（PWA）。
@@ -15,7 +16,7 @@ interface InstallPromptEvent extends Event {
 }
 
 interface LaunchParams {
-  files?: { getFile(): Promise<File> }[];
+  files?: FileHandleLike[];
 }
 
 let deferred: InstallPromptEvent | null = null;
@@ -82,7 +83,8 @@ export function handleLaunch(app: App): Promise<boolean> {
       if (!params.files?.length) return;
       clearTimeout(timer);
       resolve(true);
-      for (const h of params.files) await app.openAnyFile(await h.getFile());
+      // ダブルクリックで開いたファイルは、そのまま上書き保存できる
+      for (const h of params.files) await app.openAnyFile(await h.getFile(), typeof h.createWritable === 'function' ? h : undefined);
     });
   });
 }

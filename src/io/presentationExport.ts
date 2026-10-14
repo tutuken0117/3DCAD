@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { App } from '../App';
 import { formatDms } from '../geo/jprcs';
-import { downloadBlob } from './export';
+import { chooseSaveTarget } from './saveFile';
 import type { SceneData } from '../view/Scenes';
 
 /**
@@ -73,15 +73,20 @@ async function renderScenes(
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, '_');
 
 /** 今の視点を 1 枚の画像に */
-export async function exportCurrentImage(app: App, opt: ExportOptions): Promise<void> {
+export async function exportCurrentImage(app: App, opt: ExportOptions): Promise<boolean> {
   const { width, height } = IMAGE_SIZES[opt.size];
+  const target = await chooseSaveTarget(`${safeName(app.projectName)}_${width}x${height}.png`);
+  if (!target) return false;
   const caption = opt.caption ? `${app.projectName}　${today()}` : undefined;
   const c = app.presentation.renderImage({ width, height, transparent: opt.transparent, caption });
-  downloadBlob(await canvasToBlob(c), `${safeName(app.projectName)}_${width}x${height}.png`);
+  await target.write(await canvasToBlob(c));
+  return true;
 }
 
 /** すべてのシーンの画像を ZIP で */
-export async function exportImagesZip(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<void> {
+export async function exportImagesZip(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<boolean> {
+  const target = await chooseSaveTarget(`${safeName(app.projectName)}_画像.zip`);
+  if (!target) return false;
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   await renderScenes(
@@ -92,7 +97,8 @@ export async function exportImagesZip(app: App, opt: ExportOptions, onProgress?:
     },
     onProgress,
   );
-  downloadBlob(await zip.generateAsync({ type: 'blob' }), `${safeName(app.projectName)}_画像.zip`);
+  await target.write(await zip.generateAsync({ type: 'blob' }));
+  return true;
 }
 
 /** 建物の概要（資料の表紙・概要ページ用） */
@@ -119,7 +125,9 @@ export function projectSummary(app: App): { label: string; value: string }[] {
 }
 
 /** PowerPoint（.pptx）: 表紙 → シーンごとの画像 → 概要 */
-export async function exportPptx(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<void> {
+export async function exportPptx(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<boolean> {
+  const target = await chooseSaveTarget(`${safeName(app.projectName)}.pptx`);
+  if (!target) return false;
   const { default: PptxGenJS } = await import('pptxgenjs');
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inch (16:9)
@@ -161,11 +169,14 @@ export async function exportPptx(app: App, opt: ExportOptions, onProgress?: (i: 
   sum.addText('3DCAD で作成', { x: 0.6, y: H - 0.7, w: 6, h: 0.4, fontFace: font, fontSize: 10, color: '6B7885' });
 
   const blob = (await pptx.write({ outputType: 'blob' })) as Blob;
-  downloadBlob(blob, `${safeName(app.projectName)}.pptx`);
+  await target.write(blob);
+  return true;
 }
 
 /** PDF（A4 横）: 表紙 → シーンごと */
-export async function exportPdf(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<void> {
+export async function exportPdf(app: App, opt: ExportOptions, onProgress?: (i: number, n: number) => void): Promise<boolean> {
+  const target = await chooseSaveTarget(`${safeName(app.projectName)}.pdf`);
+  if (!target) return false;
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const W = 297;
@@ -185,17 +196,20 @@ export async function exportPdf(app: App, opt: ExportOptions, onProgress?: (i: n
     doc.addImage(img, 'JPEG', (W - w) / 2, (H - h) / 2, w, h);
   }, onProgress);
   // jsPDF の標準フォントは日本語が出ないため、シーン名などは画像内の文字（右下）で入れている
-  downloadBlob(doc.output('blob'), `${safeName(app.projectName)}.pdf`);
+  await target.write(doc.output('blob'));
+  return true;
 }
 
 /** 動画: シーンを順にめぐる（なめらかなカメラ移動） */
-export async function exportVideo(app: App, onProgress?: (i: number, n: number) => void): Promise<void> {
+export async function exportVideo(app: App, onProgress?: (i: number, n: number) => void): Promise<boolean> {
   const vp = app.viewport;
   const r = vp.renderer;
-  const scenes = scenesForExport(app);
   if (!('MediaRecorder' in window) || !r.domElement.captureStream) throw new Error('このブラウザは動画の書き出しに対応していません');
   const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
   const mime = types.find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+  const target = await chooseSaveTarget(`${safeName(app.projectName)}_ウォークスルー.${mime.includes('mp4') ? 'mp4' : 'webm'}`);
+  if (!target) return false;
+  const scenes = scenesForExport(app);
   const W = 1280;
   const H = 720;
   const prevPR = r.getPixelRatio();
@@ -243,7 +257,6 @@ export async function exportVideo(app: App, onProgress?: (i: number, n: number) 
     vp.controls.target.copy(keepT);
     vp.controls.update();
   }
-  const type = rec.mimeType || 'video/webm';
-  const ext = type.includes('mp4') ? 'mp4' : 'webm';
-  downloadBlob(new Blob(chunks, { type }), `${safeName(app.projectName)}_ウォークスルー.${ext}`);
+  await target.write(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+  return true;
 }

@@ -1,3 +1,4 @@
+import type { MaterialSettings } from '../core/materials';
 import type { ModelData } from '../core/Model';
 import type { GeoReferenceData } from '../geo/GeoReference';
 import type { SheetData, sheetFromLegacyUnderlay } from '../view/SheetManager';
@@ -25,6 +26,8 @@ export interface ProjectFile {
   scenes?: SceneData[];
   /** プレゼン表示の設定 */
   render?: Partial<RenderSettings>;
+  /** 材料の色の変更・自分で作った材料 */
+  materials?: MaterialSettings;
 }
 
 export function parseProject(text: string): ProjectFile {

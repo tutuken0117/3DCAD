@@ -23,7 +23,24 @@ import {
   IMAGE_SIZES,
   type ImageSizeKey,
 } from '../io/presentationExport';
-import { MAT_PREFIX, MATERIALS, materialOf } from '../core/materials';
+import {
+  addCustomMaterial,
+  allMaterials,
+  builtinMaterial,
+  getMaterial,
+  isMaterialModified,
+  MAT_PREFIX,
+  MATERIAL_CATEGORIES,
+  materialOf,
+  materialSettings,
+  removeCustomMaterial,
+  resetMaterial,
+  setMaterialOverride,
+  type MaterialCategory,
+  type MaterialDef,
+} from '../core/materials';
+import { writeMaterialDefaults, writeSaveMode } from '../io/userSettings';
+import { canPickLocation, saveMode } from '../io/saveFile';
 import { materialSwatch } from '../view/materialTextures';
 import { isStandalone, promptInstall } from '../pwa';
 
@@ -100,10 +117,20 @@ export class UI {
     header.innerHTML = `
       <div class="brand">3DCAD <small>β</small></div>
       <button class="panel-toggle icon" data-act="panel" title="パネルを開く/閉じる">☰</button>
+      <button class="menu-toggle" data-act="menu" title="メニュー">メニュー ▾</button>
       <div class="menu">
         <button data-act="new">新規</button>
         <button data-act="open">開く</button>
-        <button data-act="save">保存</button>
+        <div class="dropdown">
+          <button>保存 ▾</button>
+          <div class="dropdown-menu">
+            <button data-act="save">保存（上書き） <small>Ctrl+S</small></button>
+            <button data-act="save-as">名前を付けて保存（場所を選ぶ）… <small>Ctrl+Shift+S</small></button>
+            <hr>
+            <button data-act="save-mode-ask" class="save-mode">毎回、保存する場所を選ぶ</button>
+            <button data-act="save-mode-download" class="save-mode">ダウンロードフォルダに保存</button>
+          </div>
+        </div>
         <div class="dropdown">
           <button class="primary">読み込み ▾</button>
           <div class="dropdown-menu">
@@ -274,8 +301,28 @@ export class UI {
       if (act === 'sample') void app.loadSample();
       if (act === 'sample-house') void app.loadHouseSample();
       if (act === 'panel') this.root.classList.toggle('panel-open');
-      if (act === 'open') this.pickFile('open');
-      if (act === 'save') app.saveProject();
+      if (act === 'menu') {
+        e.stopPropagation();
+        header.classList.toggle('menu-open');
+        return;
+      }
+      // スマホのメニュー: 項目を選んだら閉じる（分類の見出しは閉じない）
+      if (b.closest('.menu') && !(b.parentElement?.classList.contains('dropdown') && !b.closest('.dropdown-menu'))) header.classList.remove('menu-open');
+      if (act === 'open') void app.openProjectDialog();
+      if (act === 'save') void app.saveProject();
+      if (act === 'save-as') void app.saveProject(true);
+      if (act === 'save-mode-ask' || act === 'save-mode-download') {
+        writeSaveMode(act === 'save-mode-ask' ? 'ask' : 'download');
+        this.refreshSaveMode();
+        this.toast(
+          act === 'save-mode-ask'
+            ? canPickLocation()
+              ? '保存・書き出しのたびに、保存する場所と名前を選びます'
+              : 'スマホ・タブレットでは共有メニュー（「ファイルに保存」など）から保存先を選びます'
+            : '保存・書き出しはダウンロードフォルダに保存します',
+          6000,
+        );
+      }
       if (act === 'import-sheet') this.pickFile('sheet');
       if (act === 'import-pc') this.pickFile('pointcloud');
       if (act === 'undo') app.undo();
@@ -301,6 +348,7 @@ export class UI {
       }
     });
     this.undoBtn = header.querySelector('[data-act=undo]')!;
+    this.refreshSaveMode();
     this.redoBtn = header.querySelector('[data-act=redo]')!;
     app.history.onChange(() => this.updateUndo());
     this.updateUndo();
@@ -386,52 +434,157 @@ export class UI {
     this.paintSwatch.title = `塗る材料・色: ${def ? def.name : this.paintColor}（クリックで選ぶ）`;
   }
 
+  /** 材料パレットで開いている分類 */
+  private paletteCat: MaterialCategory | '色' = '外壁';
+
   /** 材料パレット（ペイントツール用） */
   togglePalette(show?: boolean): void {
     if (!this.paletteEl) {
       const el = h('div', { class: 'material-palette' });
-      const cats = [...new Set(MATERIALS.map((m) => m.category))];
-      el.innerHTML = `
-        <div class="palette-head"><b>材料・色を選ぶ</b><button data-close title="閉じる">×</button></div>
-        ${cats
-          .map(
-            (c) => `<div class="palette-cat">${esc(c)}</div><div class="palette-grid">
-              ${MATERIALS.filter((m) => m.category === c)
-                .map((m) => `<button data-mat="${m.id}" title="${esc(m.name)}"><img src="${materialSwatch(m)}" alt=""><span>${esc(m.name)}</span></button>`)
-                .join('')}
-            </div>`,
-          )
-          .join('')}
-        <div class="palette-cat">色</div>
-        <div class="palette-colors">
-          ${['#f4f2ea', '#ffffff', '#d9d4c7', '#9aa3ab', '#4a4f55', '#2b2d30', '#c8a46e', '#8c5a3c', '#a33b2b', '#d9a441', '#5f8f4e', '#3e6e9e']
-            .map((c) => `<button data-col="${c}" style="background:${c}" title="${c}"></button>`)
-            .join('')}
-          <input type="color" data-custom value="#c8a46e" title="好きな色">
-        </div>
-        <div class="row"><button data-apply class="primary">選択中の面に塗る</button></div>
-        <p class="muted small">選んでから面をクリックすると塗れます。選択中の面にまとめて塗ることもできます。</p>`;
-      el.addEventListener('click', (e) => {
-        const b = (e.target as HTMLElement).closest('button');
-        if (!b) return;
-        if (b.dataset.close !== undefined) return this.togglePalette(false);
-        if (b.dataset.apply !== undefined) return this.app.paintSelection(this.paintColor);
-        const v = b.dataset.mat ? MAT_PREFIX + b.dataset.mat : b.dataset.col;
-        if (!v) return;
-        this.setPaintColor(v);
-        el.querySelectorAll('.active').forEach((x) => x.classList.remove('active'));
-        b.classList.add('active');
-        if (this.app.tool.def.id !== 'paint') this.app.setTool('paint');
-      });
-      el.querySelector<HTMLInputElement>('[data-custom]')!.addEventListener('input', (e) => {
-        this.setPaintColor((e.target as HTMLInputElement).value);
-        if (this.app.tool.def.id !== 'paint') this.app.setTool('paint');
-      });
+      el.addEventListener('click', (e) => this.onPaletteClick(e));
+      el.addEventListener('input', (e) => this.onPaletteInput(e, false));
+      el.addEventListener('change', (e) => this.onPaletteInput(e, true));
       this.viewportEl.appendChild(el);
       this.paletteEl = el;
+      this.renderPalette();
     }
     const visible = show ?? this.paletteEl.style.display !== 'block';
+    if (visible) {
+      // 今の材料の分類を開く
+      const cur = materialOf(this.paintColor);
+      this.paletteCat = cur ? cur.category : this.paintColor.startsWith('#') ? '色' : this.paletteCat;
+      this.renderPalette();
+    }
     this.paletteEl.style.display = visible ? 'block' : 'none';
+  }
+
+  /** パレットの中身を作り直す */
+  renderPalette(): void {
+    const el = this.paletteEl;
+    if (!el) return;
+    const cur = materialOf(this.paintColor);
+    const cats: (MaterialCategory | '色')[] = [...MATERIAL_CATEGORIES, '色'];
+    const list = allMaterials().filter((m) => m.category === this.paletteCat);
+    const scroll = el.querySelector('.palette-body')?.scrollTop ?? 0;
+    el.innerHTML = `
+      <div class="palette-head"><b>材料・色を選ぶ</b><button data-close title="閉じる">×</button></div>
+      <div class="palette-tabs">${cats.map((c) => `<button data-cat="${c}" class="${c === this.paletteCat ? 'active' : ''}">${esc(c)}</button>`).join('')}</div>
+      <div class="palette-body">
+      ${
+        this.paletteCat === '色'
+          ? `<div class="palette-colors">
+          ${['#f4f2ea', '#ffffff', '#d9d4c7', '#9aa3ab', '#4a4f55', '#2b2d30', '#c8a46e', '#8c5a3c', '#a33b2b', '#d9a441', '#5f8f4e', '#3e6e9e']
+            .map((c) => `<button data-col="${c}" style="background:${c}" title="${c}" class="${this.paintColor === c ? 'active' : ''}"></button>`)
+            .join('')}
+          <input type="color" data-custom value="${this.paintColor.startsWith('#') ? this.paintColor : '#c8a46e'}" title="好きな色">
+        </div>
+        <p class="muted small">模様のない単色で塗ります。模様つきの材料の色を変えたいときは、材料を選んで下の「色」を変えてください。</p>`
+          : `<div class="palette-grid">
+          ${list
+            .map(
+              (m) =>
+                `<button data-mat="${m.id}" title="${esc(m.name)}" class="${cur?.id === m.id ? 'active' : ''}"><img src="${materialSwatch(m)}" alt=""><span>${m.custom ? '★ ' : ''}${esc(m.name)}${isMaterialModified(m.id) ? ' *' : ''}</span></button>`,
+            )
+            .join('')}
+        </div>`
+      }
+      ${cur && cur.category === this.paletteCat ? this.materialEditorHtml(cur) : ''}
+      </div>
+      <div class="row"><button data-apply class="primary">選択中の面に塗る</button></div>
+      <p class="muted small">選んでから面をクリックすると塗れます。選択中の面にまとめて塗ることもできます。</p>`;
+    const body = el.querySelector('.palette-body');
+    if (body) body.scrollTop = scroll;
+  }
+
+  private materialEditorHtml(m: MaterialDef): string {
+    const base = builtinMaterial(m.id);
+    return `<div class="material-editor" data-edit="${m.id}">
+      <div class="editor-title"><img src="${materialSwatch(m)}" alt=""><b>${esc(m.name)}</b></div>
+      <label class="form-row"><span>名前</span><input data-ed-name value="${esc(m.name)}"></label>
+      <label class="form-row"><span>色</span><input type="color" data-ed-color value="${m.color}"></label>
+      <label class="form-row"><span>模様の大きさ</span><select data-ed-tile>
+        ${[0.5, 0.75, 1, 1.5, 2]
+          .map((k) => {
+            const t = Math.round((base?.tile ?? m.tile) * k * 100) / 100;
+            return `<option value="${t}" ${Math.abs(t - m.tile) < 0.005 ? 'selected' : ''}>${k === 1 ? '標準' : `${k} 倍`}（${t} m）</option>`;
+          })
+          .join('')}
+        ${[0.5, 0.75, 1, 1.5, 2].some((k) => Math.abs((base?.tile ?? m.tile) * k - m.tile) < 0.005) ? '' : `<option selected value="${m.tile}">${m.tile} m</option>`}
+      </select></label>
+      <div class="row wrap">
+        ${base && isMaterialModified(m.id) ? '<button data-ed-reset>最初の色・名前に戻す</button>' : ''}
+        <button data-ed-copy>これをもとに新しい材料を作る</button>
+        ${m.custom ? '<button data-ed-del class="danger">この材料を削除</button>' : ''}
+      </div>
+      <div class="row wrap"><button data-ed-default>今の材料の設定を、新しいプロジェクトでも使う</button></div>
+      <p class="muted small">色を変えると、この材料を塗ったすべての面が変わります。設定はプロジェクトに保存されます。</p>
+    </div>`;
+  }
+
+  private onPaletteClick(e: Event): void {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b) return;
+    const app = this.app;
+    const editing = (b.closest('[data-edit]') as HTMLElement | null)?.dataset.edit;
+    if (b.dataset.close !== undefined) return this.togglePalette(false);
+    if (b.dataset.apply !== undefined) return app.paintSelection(this.paintColor);
+    if (b.dataset.cat) {
+      this.paletteCat = b.dataset.cat as MaterialCategory | '色';
+      return this.renderPalette();
+    }
+    if (editing) {
+      const m = getMaterial(editing)!;
+      if (b.dataset.edReset !== undefined) resetMaterial(editing);
+      if (b.dataset.edCopy !== undefined) {
+        const d = addCustomMaterial(m, `${m.name.replace(/^★ /, '')}（コピー）`, m.color);
+        this.setPaintColor(MAT_PREFIX + d.id);
+        this.toast('新しい材料を作りました。名前と色を変えてください');
+      }
+      if (b.dataset.edDel !== undefined) {
+        removeCustomMaterial(editing);
+        this.setPaintColor(MAT_PREFIX + 'plaster-white');
+      }
+      if (b.dataset.edDefault !== undefined) {
+        writeMaterialDefaults(materialSettings());
+        this.toast('この端末で新しく作るプロジェクトでも、今の材料の色と自分の材料を使います');
+      }
+      return this.renderPalette();
+    }
+    const v = b.dataset.mat ? MAT_PREFIX + b.dataset.mat : b.dataset.col;
+    if (!v) return;
+    this.setPaintColor(v);
+    this.renderPalette();
+    if (app.tool.def.id !== 'paint') app.setTool('paint');
+  }
+
+  /** 色・名前・大きさの変更（final=false はドラッグ中。描き直しは軽く、パレットは作り直さない） */
+  private onPaletteInput(e: Event, final: boolean): void {
+    const t = e.target as HTMLInputElement;
+    if (t.dataset.custom !== undefined) {
+      this.setPaintColor(t.value);
+      if (this.app.tool.def.id !== 'paint') this.app.setTool('paint');
+      return;
+    }
+    const id = (t.closest('[data-edit]') as HTMLElement | null)?.dataset.edit;
+    if (!id) return;
+    if (t.dataset.edColor !== undefined) setMaterialOverride(id, { color: t.value });
+    else if (t.dataset.edTile !== undefined) setMaterialOverride(id, { tile: Number(t.value) });
+    else if (t.dataset.edName !== undefined) {
+      if (!final) return;
+      setMaterialOverride(id, { name: t.value.trim() || '自分の材料' });
+    } else return;
+    this.setPaintColor(MAT_PREFIX + id);
+    if (final) this.renderPalette();
+  }
+
+  /** 保存のしかたの選択状態（メニューの ✓） */
+  refreshSaveMode(): void {
+    const mode = saveMode();
+    this.root.querySelectorAll<HTMLButtonElement>('.save-mode').forEach((b) => {
+      const on = b.dataset.act === `save-mode-${mode}`;
+      b.classList.toggle('checked', on);
+      b.textContent = `${on ? '✓ ' : '　 '}${b.textContent!.replace(/^(✓ |　 )/, '')}`;
+    });
   }
 
   /** 「アプリにする」ボタンの表示（ブラウザがインストールできると知らせてきたとき） */
@@ -1280,13 +1433,14 @@ export class UI {
     $<HTMLInputElement>('[data-caption]')!.addEventListener('change', (e) => (this.exportCaption = (e.target as HTMLInputElement).checked));
     $<HTMLInputElement>('[data-transparent]')!.addEventListener('change', (e) => (this.exportTransparent = (e.target as HTMLInputElement).checked));
     const opts = () => ({ size: this.exportSize, caption: this.exportCaption, transparent: this.exportTransparent });
-    const run = (label: string, fn: (progress: (i: number, n: number) => void) => Promise<void>) => async () => {
+    const run = (label: string, fn: (progress: (i: number, n: number) => void) => Promise<boolean>) => async () => {
       if (app.model.isEmpty()) return this.toast('モデルがありません');
-      this.toast(`${label}を作成しています…`, 60000);
       try {
-        await fn((i, n) => this.toast(`${label}を作成しています… ${i + 1} / ${n}`, 60000));
-        this.toast(`${label}を書き出しました`);
+        // 保存場所を選ぶ画面は、クリック直後に開く（fn の最初）
+        const done = await fn((i, n) => this.toast(`${label}を作成しています… ${i + 1} / ${n}`, 60000));
+        this.toast(done ? `${label}を書き出しました` : '書き出しを取りやめました');
       } catch (err) {
+        if ((err as Error).name === 'AbortError') return this.toast('書き出しを取りやめました');
         console.error(err);
         this.alert('書き出しエラー', esc(String((err as Error).message ?? err)));
       }
@@ -1364,9 +1518,17 @@ export class UI {
         <li>「インストール」を押すと、専用のウィンドウで開き、デスクトップ・スタートメニュー（Mac は Launchpad）に <b>3DCAD</b> のアイコンができます</li>
         <li>タスクバー（Mac は Dock）のアイコンを右クリック →「タスクバーにピン留め」（Mac は「Dock に追加」）でいつでも起動</li>
       </ol>
-      <p class="muted">インストール後は、ネットにつながっていなくても起動でき、.3dcad・.jww・.dxf ファイルをダブルクリック（または「プログラムから開く → 3DCAD」）で開けます。iPad は Safari の共有ボタン →「ホーム画面に追加」。</p>
+      <p class="muted">インストール後は、ネットにつながっていなくても起動でき、.3dcad・.jww・.dxf ファイルをダブルクリック（または「プログラムから開く → 3DCAD」）で開けます。</p>
+      <h4>スマホ・タブレット</h4>
+      <ul class="steps">
+        <li><b>iPhone・iPad</b>: Safari でこのページを開き、下（iPad は上）の共有ボタン（□に↑）→「ホーム画面に追加」→「追加」</li>
+        <li><b>Android</b>: Chrome で開き、右上の「︙」→「アプリをインストール」（または「ホーム画面に追加」）</li>
+      </ul>
+      <p class="muted">ホーム画面の 3DCAD アイコンから、アドレスバーのない全画面で起動します。上の操作は「メニュー」、パネルは ☰ から。</p>
       <div class="row"><button data-install-help class="primary">アプリにする</button></div>`
       }
+      <h3>保存する場所</h3>
+      <p class="muted">「保存 ▾」の「名前を付けて保存」で場所と名前を選べます（PC の Chrome・Edge）。一度保存すると「保存（Ctrl+S）」は同じファイルに上書きします。スマホでは共有メニューの「ファイルに保存」「ドライブに保存」などから保存先を選びます。毎回選ばずにダウンロードフォルダへ保存したいときは「保存 ▾」→「ダウンロードフォルダに保存」。</p>
       <h3>プレゼン資料を作る（初めてでも 3 ステップ）</h3>
       <ol class="steps">
         <li>右上の「プレゼン資料を作る」を押す</li>

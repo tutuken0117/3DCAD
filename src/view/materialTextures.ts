@@ -238,16 +238,97 @@ function draw(def: MaterialDef, g: CanvasRenderingContext2D): void {
       noise(g, 0.18, 11, 2);
       noise(g, 0.1, 12, 1);
       break;
+    case 'stone': {
+      // 不定形の石（大小の矩形を目地で区切る）
+      g.fillStyle = shade(base, -0.35);
+      g.fillRect(0, 0, SIZE, SIZE);
+      const rows = 5;
+      const h = SIZE / rows;
+      for (let y = 0; y < rows; y++) {
+        let x = -r() * 60;
+        while (x < SIZE) {
+          const w = 70 + r() * 110;
+          g.fillStyle = shade(base, (r() - 0.5) * 0.3);
+          g.fillRect(x + 3, y * h + 3, w - 6, h - 6);
+          x += w;
+        }
+      }
+      noise(g, 0.08, 13, 2);
+      break;
+    }
+    case 'block': {
+      // ブロック積み（半分ずらし）
+      const cols = 4;
+      const rows = 8;
+      const w = SIZE / cols;
+      const h = SIZE / rows;
+      g.fillStyle = shade(base, -0.3);
+      g.fillRect(0, 0, SIZE, SIZE);
+      for (let y = 0; y < rows; y++) {
+        const off = y % 2 ? w / 2 : 0;
+        for (let x = -1; x <= cols; x++) {
+          g.fillStyle = shade(base, (r() - 0.5) * 0.12);
+          g.fillRect(x * w + off + 2, y * h + 2, w - 4, h - 4);
+        }
+      }
+      noise(g, 0.08, 14, 2);
+      break;
+    }
+    case 'panel': {
+      // 大判パネル（縦長の目地）
+      const cols = 2;
+      const w = SIZE / cols;
+      for (let x = 0; x < cols; x++) {
+        g.fillStyle = shade(base, (r() - 0.5) * 0.06);
+        g.fillRect(x * w, 0, w, SIZE);
+      }
+      g.fillStyle = shade(base, -0.35);
+      for (let x = 0; x <= cols; x++) g.fillRect(x * w - 2, 0, 4, SIZE);
+      g.fillRect(0, SIZE / 2 - 2, SIZE, 4);
+      g.fillRect(0, 0, SIZE, 2);
+      noise(g, 0.04, 15, 2);
+      break;
+    }
+    case 'shingle': {
+      // アスファルトシングル（段ごとにずらした切り込み）
+      const rows = 6;
+      const h = SIZE / rows;
+      for (let y = 0; y < rows; y++) {
+        const off = (y % 2) * 32;
+        for (let x = -1; x < 9; x++) {
+          g.fillStyle = shade(base, (r() - 0.5) * 0.25);
+          g.fillRect(x * 64 + off + 1, y * h, 62, h - 3);
+        }
+        g.fillStyle = 'rgba(0,0,0,0.45)';
+        g.fillRect(0, y * h + h - 4, SIZE, 4);
+      }
+      noise(g, 0.12, 16, 2);
+      break;
+    }
+    case 'gravel': {
+      // 砂利・土（小石の粒）
+      noise(g, 0.12, 17, 2);
+      for (let i = 0; i < 2600; i++) {
+        g.fillStyle = shade(base, (r() - 0.5) * 0.6);
+        g.beginPath();
+        g.ellipse(r() * SIZE, r() * SIZE, 2 + r() * 5, 2 + r() * 4, r() * Math.PI, 0, Math.PI * 2);
+        g.fill();
+      }
+      break;
+    }
     case 'plain':
       break;
   }
 }
 
+/** 色・模様・大きさが同じなら同じテクスチャを使う */
+const sig = (def: MaterialDef) => `${def.id}|${def.color}|${def.pattern}|${def.tile}`;
+
 const textureCache = new Map<string, CanvasTexture>();
 
 export function materialTexture(def: MaterialDef): CanvasTexture | null {
   if (def.pattern === 'plain') return null;
-  let tex = textureCache.get(def.id);
+  let tex = textureCache.get(sig(def));
   if (!tex) {
     const c = document.createElement('canvas');
     c.width = c.height = SIZE;
@@ -257,27 +338,34 @@ export function materialTexture(def: MaterialDef): CanvasTexture | null {
     tex.colorSpace = SRGBColorSpace;
     tex.anisotropy = 8;
     tex.repeat.set(1 / def.tile, 1 / def.tile);
-    textureCache.set(def.id, tex);
+    textureCache.set(sig(def), tex);
   }
   return tex;
 }
 
 /** 材料見本（パレット表示用の小さな画像） */
+const swatchCache = new Map<string, string>();
+
 export function materialSwatch(def: MaterialDef): string {
+  const key = sig(def);
+  const hit = swatchCache.get(key);
+  if (hit) return hit;
   const c = document.createElement('canvas');
   c.width = c.height = SIZE;
   draw(def, c.getContext('2d')!);
   const s = document.createElement('canvas');
   s.width = s.height = 48;
   s.getContext('2d')!.drawImage(c, 0, 0, SIZE / 2, SIZE / 2, 0, 0, 48, 48);
-  return s.toDataURL();
+  const url = s.toDataURL();
+  swatchCache.set(key, url);
+  return url;
 }
 
 const materialCache = new Map<string, MeshStandardMaterial>();
 
 /** 3D 描画用のマテリアル（doubleSided: 裏面も同じ見た目で描く） */
 export function threeMaterial(def: MaterialDef, doubleSided: boolean): MeshStandardMaterial {
-  const key = `${def.id}:${doubleSided}`;
+  const key = `${sig(def)}:${def.opacity}:${def.roughness}:${doubleSided}`;
   let m = materialCache.get(key);
   if (!m) {
     const map = materialTexture(def);
