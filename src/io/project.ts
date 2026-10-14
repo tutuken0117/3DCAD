@@ -28,6 +28,8 @@ export interface ProjectFile {
   render?: Partial<RenderSettings>;
   /** 材料の色の変更・自分で作った材料 */
   materials?: MaterialSettings;
+  /** プロジェクト名（自動保存から戻すとき用） */
+  name?: string;
 }
 
 export function parseProject(text: string): ProjectFile {

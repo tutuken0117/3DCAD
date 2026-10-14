@@ -533,6 +533,7 @@ export class App {
       scenes: this.scenes.toJSON(),
       render: this.presentation.settings,
       materials: materialSettings(),
+      name: this.projectName,
       pointClouds: [
         ...this.pointClouds.clouds.map((c) => ({
           name: c.name,
@@ -628,11 +629,12 @@ export class App {
   async restoreAutosave(): Promise<void> {
     const p = await loadAutosave();
     if (!p || (p.model.faces.length === 0 && p.model.edges.length === 0 && !p.sheets?.length)) return;
+    // 毎回たずねずに、前回の続きをそのまま開く（新しく始めるときは「新規」）
     const when = new Date(p.savedAt).toLocaleString('ja-JP');
-    if (await this.ui.confirm('前回の作業を復元', `${when} に自動保存されたデータがあります。復元しますか？`, '復元する', '新規で始める')) {
-      await this.loadProjectFile(p);
-      this.zoomExtents();
-    }
+    await this.loadProjectFile(p);
+    if (p.name) this.projectName = p.name;
+    this.zoomExtents();
+    this.ui.toast(`前回の続き（${when} の自動保存）を開きました。新しく始めるときは「新規」を押してください`, 7000);
   }
 
   // ---- サンプル ----
