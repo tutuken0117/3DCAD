@@ -89,8 +89,8 @@ export const MATERIALS: MaterialDef[] = [
   m('roof-shingle', 'アスファルトシングル', '屋根', dull('#4d4b48', 'shingle', 1.0, 0.9)),
   m('roof-flat', '陸屋根（防水シート）', '屋根', dull('#9a9d9f', 'concrete', 3)),
   // 開口
-  m('glass', 'ガラス（青み）', '開口', { color: '#7fa6c4', roughness: 0.05, metalness: 0.2, opacity: 0.45, pattern: 'glass', tile: 2 }),
-  m('glass-clear', '透明ガラス', '開口', { color: '#b8d2e0', roughness: 0.03, metalness: 0.1, opacity: 0.25, pattern: 'glass', tile: 2 }),
+  m('glass', 'ガラス（青み）', '開口', { color: '#9fc0d8', roughness: 0.05, metalness: 0, opacity: 0.28, pattern: 'plain', tile: 2 }),
+  m('glass-clear', '透明ガラス', '開口', { color: '#d6e6ee', roughness: 0.03, metalness: 0, opacity: 0.12, pattern: 'plain', tile: 2 }),
   m('glass-frosted', 'すりガラス', '開口', { color: '#e3e8eb', roughness: 0.6, metalness: 0, opacity: 0.85, pattern: 'plain', tile: 2 }),
   m('glass-mirror', '熱線反射ガラス', '開口', { color: '#4f6475', roughness: 0.05, metalness: 0.7, opacity: 0.8, pattern: 'glass', tile: 2 }),
   m('sash-black', 'サッシ（黒）', '開口', metal('#2b2d30', 'plain', 1)),

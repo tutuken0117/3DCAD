@@ -384,6 +384,8 @@ export function threeMaterial(def: MaterialDef, doubleSided: boolean): MeshStand
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
+    // 透けるガラスは映り込みを控えめに（白く曇って中が見えなくならないように）
+    if (def.opacity !== undefined && def.opacity < 0.5) m.envMapIntensity = 0.25;
     materialCache.set(key, m);
   }
   return m;
