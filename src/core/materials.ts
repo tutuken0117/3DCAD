@@ -26,7 +26,7 @@ export type MaterialPattern =
   | 'flooring'
   | 'plain';
 
-export type MaterialCategory = '外壁' | '屋根' | '開口' | '床・地面' | 'その他';
+export type MaterialCategory = '外壁' | '屋根' | '開口' | '床・地面' | '家具' | 'その他';
 
 export interface MaterialDef {
   id: string;
@@ -43,6 +43,8 @@ export interface MaterialDef {
   tile: number;
   /** 利用者が作った材料 */
   custom?: boolean;
+  /** 光る強さ（照明器具の発光面） */
+  emissive?: number;
 }
 
 type Def = Omit<MaterialDef, 'id' | 'name' | 'category'>;
@@ -108,13 +110,32 @@ export const MATERIALS: MaterialDef[] = [
   m('deck', 'ウッドデッキ', '床・地面', dull('#8f6a46', 'flooring', 1.5, 0.75)),
   m('flooring', 'フローリング', '床・地面', dull('#b98b5e', 'flooring', 1.8, 0.6)),
   m('carpet', 'タイルカーペット', '床・地面', dull('#6b7280', 'tile', 1.0, 1)),
+  // 家具・設備
+  m('wood-light', '家具の木（明るい）', '家具', dull('#c9a77c', 'wood', 0.8, 0.6)),
+  m('wood-walnut', '家具の木（ウォールナット）', '家具', dull('#5b3d2a', 'wood', 0.8, 0.6)),
+  m('fabric-gray', '布（グレー）', '家具', dull('#8a8d91', 'plaster', 0.6, 1)),
+  m('fabric-navy', '布（紺）', '家具', dull('#34405a', 'plaster', 0.6, 1)),
+  m('fabric-beige', '布（ベージュ）', '家具', dull('#cbbca3', 'plaster', 0.6, 1)),
+  m('fabric-white', '布（白・寝具）', '家具', dull('#efede8', 'plaster', 0.6, 1)),
+  m('leather-black', '革（黒）', '家具', { color: '#232323', roughness: 0.45, metalness: 0, pattern: 'plain', tile: 1 }),
+  m('steel-white', 'スチール（白）', '家具', { color: '#e9e9e6', roughness: 0.5, metalness: 0.2, pattern: 'plain', tile: 1 }),
+  m('stainless', 'ステンレス', '家具', { color: '#c7cacc', roughness: 0.25, metalness: 0.9, pattern: 'plain', tile: 1 }),
+  m('ceramic', '陶器（白）', '家具', { color: '#f4f4f2', roughness: 0.15, metalness: 0, pattern: 'plain', tile: 1 }),
+  m('plastic-black', '樹脂（黒）', '家具', { color: '#2a2a2a', roughness: 0.5, metalness: 0, pattern: 'plain', tile: 1 }),
+  m('screen', '画面（黒）', '家具', { color: '#111316', roughness: 0.1, metalness: 0.3, pattern: 'plain', tile: 1 }),
+  m('blind', 'ブラインド（白）', '家具', dull('#ecebe6', 'siding', 0.25, 0.6)),
+  m('light', '照明（光る面）', '家具', { color: '#fff6e2', roughness: 0.5, metalness: 0, pattern: 'plain', tile: 1, emissive: 1.4 }),
+  m('foliage', '植栽（葉）', '家具', dull('#4d7a3a', 'grass', 0.8, 1)),
+  m('car-white', '車体（白）', '家具', { color: '#e6e7e8', roughness: 0.25, metalness: 0.5, pattern: 'plain', tile: 1 }),
+  m('tire', 'タイヤ', '家具', dull('#1b1b1b', 'plain', 1, 0.9)),
+  m('skin', '人（肌）', '家具', dull('#d9b08c', 'plain', 1, 0.8)),
   // その他
   m('white', '白（模型）', 'その他', dull('#f2f1ee', 'plain', 1, 0.9)),
   m('steel-gray', '鉄骨（グレー塗装）', 'その他', metal('#7d8287', 'plain', 1)),
   m('steel-black', '鉄部（黒塗装）', 'その他', metal('#26282b', 'plain', 1)),
 ];
 
-export const MATERIAL_CATEGORIES: MaterialCategory[] = ['外壁', '屋根', '開口', '床・地面', 'その他'];
+export const MATERIAL_CATEGORIES: MaterialCategory[] = ['外壁', '屋根', '開口', '床・地面', '家具', 'その他'];
 
 // ---------------------------------------------------------------------------
 // 材料の設定（色・模様の大きさの変更と、自分で作った材料）

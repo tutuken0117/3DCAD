@@ -9,6 +9,8 @@ export interface SceneView {
   target: [number, number, number];
   /** 一覧に出す小さな画像（data URL） */
   thumbnail?: string;
+  /** 画角（度）。未指定は 45° */
+  fov?: number;
   /** この視点で隠すレイヤー（屋根を外して中を見せる など）。未指定ならレイヤーの表示を変えない */
   hiddenLayers?: string[];
 }
@@ -105,6 +107,7 @@ export class SceneManager {
       name: name ?? `シーン ${this.items.length + 1}`,
       position: [cam.position.x, cam.position.y, cam.position.z],
       target: [t.x, t.y, t.z],
+      fov: 'fov' in cam && cam.fov !== 45 ? (cam.fov as number) : undefined,
     });
   }
 
@@ -137,6 +140,11 @@ export class SceneManager {
     const toP = new Vector3(...s.position);
     const toT = new Vector3(...s.target);
     if (s.hiddenLayers && this.layerState) this.layerState.set(s.hiddenLayers);
+    const persp = vp.perspCamera;
+    if (persp && persp.fov !== (s.fov ?? 45)) {
+      persp.fov = s.fov ?? 45;
+      persp.updateProjectionMatrix();
+    }
     if (!animate) {
       this.anim = null;
       vp.camera.position.copy(toP);

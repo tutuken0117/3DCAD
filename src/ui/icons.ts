@@ -14,6 +14,8 @@ export const ICONS: Record<string, string> = {
   eraser: wrap('<path d="M16 3l5 5-10 10H6l-3-3z" fill="currentColor" fill-opacity=".12"/><path d="M11 21h10"/>'),
   paint: wrap('<path d="M5 13l7-7 6 6-7 7z" fill="currentColor" fill-opacity=".15"/><path d="M18 14c1.5 2 2 3 2 4a2 2 0 0 1-4 0c0-1 .5-2 2-4z"/>'),
   coord: wrap('<circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/>'),
+  furniture: wrap('<path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M3 11h18v5H3z"/><path d="M5 16v3M19 16v3"/>'),
+  walk: wrap('<circle cx="12" cy="4.5" r="2"/><path d="M10 21l1.5-6-2-2 1-5 3 2 2 3"/><path d="M11.5 8l-3 2-1 3"/><path d="M13 15l2 6"/>'),
   orbit: wrap('<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="M19 9l2 3-3 1"/>'),
   pan: wrap('<path d="M8 13V6a1.5 1.5 0 0 1 3 0v6M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.5L8 13"/>'),
   underlay: wrap('<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/>'),

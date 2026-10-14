@@ -365,7 +365,7 @@ const materialCache = new Map<string, MeshStandardMaterial>();
 
 /** 3D 描画用のマテリアル（doubleSided: 裏面も同じ見た目で描く） */
 export function threeMaterial(def: MaterialDef, doubleSided: boolean): MeshStandardMaterial {
-  const key = `${sig(def)}:${def.opacity}:${def.roughness}:${doubleSided}`;
+  const key = `${sig(def)}:${def.opacity}:${def.roughness}:${def.emissive}:${doubleSided}`;
   let m = materialCache.get(key);
   if (!m) {
     const map = materialTexture(def);
@@ -378,6 +378,8 @@ export function threeMaterial(def: MaterialDef, doubleSided: boolean): MeshStand
       opacity: def.opacity ?? 1,
       depthWrite: def.opacity === undefined,
       side: doubleSided || def.opacity !== undefined ? DoubleSide : FrontSide,
+      emissive: def.emissive ? new Color(def.color) : new Color(0x000000),
+      emissiveIntensity: def.emissive ?? 0,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,

@@ -1,4 +1,6 @@
 import {
+  Group,
+  PointLight,
   ACESFilmicToneMapping,
   CanvasTexture,
   Color,
@@ -25,7 +27,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { App } from '../App';
-import { getMaterial } from '../core/materials';
+import { getMaterial, materialOf } from '../core/materials';
 import { jstDate, sunDirection, sunPosition } from '../core/sun';
 import { threeMaterial } from './materialTextures';
 
@@ -53,6 +55,8 @@ export interface RenderSettings {
   high: boolean;
   showPointClouds: boolean;
   showSheets: boolean;
+  /** 照明器具（光る材料の面）の位置に明かりを点ける */
+  interiorLights?: boolean;
 }
 
 export const DEFAULT_SETTINGS: RenderSettings = {
@@ -66,6 +70,7 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   high: true,
   showPointClouds: false,
   showSheets: false,
+  interiorLights: true,
 };
 
 export interface ImageOptions {
@@ -152,6 +157,7 @@ export class Presentation {
     if (!this.active) return;
     const vp = this.app.viewport;
     this.active = false;
+    this.updateInteriorLights(false);
     this.unsub?.();
     this.unsub = null;
     if (this.saved) {
@@ -309,10 +315,52 @@ export class Presentation {
     vp.scene.environment = s.style === 'real' ? this.envMap : null;
     vp.scene.environmentIntensity = 0.35;
 
+    this.updateInteriorLights(s.style === 'real' && s.interiorLights !== false);
     this.updateFatLines();
     this.setupComposer();
     this.refreshMaterials();
     vp.requestRender();
+  }
+
+  private lamps = new Group();
+
+  /**
+   * 室内の明かり: 光る材料（照明器具）の面ごとにグループをまとめ、その少し下に点光源を置く。
+   * 多すぎると重くなるので、面積の大きい順に最大 24 個。
+   */
+  private updateInteriorLights(on: boolean): void {
+    const vp = this.app.viewport;
+    for (const l of [...this.lamps.children]) {
+      this.lamps.remove(l);
+      (l as PointLight).dispose();
+    }
+    if (!this.lamps.parent) vp.scene.add(this.lamps);
+    if (!on) return;
+    const model = this.app.model;
+    const byGroup = new Map<number, { sum: Vector3; area: number; normal: Vector3 }>();
+    for (const f of model.faces.values()) {
+      if (!model.isLayerVisible(f.layer)) continue;
+      const def = materialOf(f.color);
+      if (!def?.emissive) continue;
+      const pts = model.facePoints(f);
+      const area = model.faceArea(f);
+      if (area <= 0) continue;
+      const c = pts.reduce((a, p) => a.add(p), new Vector3()).divideScalar(pts.length);
+      const g = model.groupOfFace(f) || -f.id;
+      const e = byGroup.get(g) ?? { sum: new Vector3(), area: 0, normal: new Vector3() };
+      e.sum.addScaledVector(c, area);
+      e.area += area;
+      e.normal.addScaledVector(model.faceNormal(f), area);
+      byGroup.set(g, e);
+    }
+    const list = [...byGroup.values()].sort((a, b) => b.area - a.area).slice(0, 24);
+    for (const e of list) {
+      const pos = e.sum.divideScalar(e.area).addScaledVector(e.normal.normalize(), 0.12);
+      // 面積に応じた明るさ（ダウンライト 〜 ベースライト・高天井用）
+      const light = new PointLight('#ffe9c8', Math.min(14, 2 + e.area * 30), 12, 2);
+      light.position.copy(pos);
+      this.lamps.add(light);
+    }
   }
 
   private groundMaterial(transparent = false): Material {

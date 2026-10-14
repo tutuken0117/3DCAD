@@ -208,7 +208,7 @@ export class Model {
    */
   addPolyFacesAsGroup(
     points: Vector3[],
-    faces: { outer: number[]; holes: number[][] }[],
+    faces: { outer: number[]; holes: number[][]; color?: string }[],
     name: string,
     layer = this.currentLayer,
     color?: string,
@@ -231,7 +231,7 @@ export class Model {
       const holes = f.holes.map((h) => h.map(vid));
       // 重なった頂点で潰れたループは除く
       if (new Set(outer).size < 3) continue;
-      if (this.addFaceFromVertices(outer, layer, color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) count++;
+      if (this.addFaceFromVertices(outer, layer, f.color ?? color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) count++;
     }
     if (!count) {
       this.groups.delete(gid);

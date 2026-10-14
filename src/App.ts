@@ -7,6 +7,8 @@ import { intersectProfiles } from './core/profileSolid';
 import { GeoReference } from './geo/GeoReference';
 import { parseDxf, decodeDxf } from './io/dxf';
 import { parseJww } from './io/jww';
+import { WalkTool } from './tools/WalkTool';
+import { FurnitureTool } from './tools/FurnitureTool';
 import { loadMaterialSettings, materialSettings, onMaterialsChange } from './core/materials';
 import { readMaterialDefaults } from './io/userSettings';
 import type { Drawing2D } from './io/drawing2d';
@@ -107,6 +109,8 @@ export class App {
       new CoordTool(this),
       new OrbitTool(this),
       new PanTool(this),
+      new WalkTool(this),
+      new FurnitureTool(this),
       new SheetAdjustTool(this),
     ]) {
       this.tools.set(t.def.id, t);
@@ -262,6 +266,8 @@ export class App {
       i: 'coord',
       o: 'orbit',
       h: 'pan',
+      g: 'walk',
+      f: 'furniture',
     };
     const id = shortcuts[e.key.toLowerCase()];
     if (id && !e.shiftKey) {
@@ -337,6 +343,7 @@ export class App {
 
   exitPresentation(): void {
     if (!this.presentation.active) return;
+    if (this.tool.def.id === 'walk' || this.tool.def.id === 'furniture') this.setTool('select');
     this.presentation.exit();
     this.viewport.setNavigationMode('default');
     this.setTool('select');

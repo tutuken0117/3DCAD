@@ -1101,3 +1101,32 @@ select {
     width: auto;
   }
 }
+
+/* 家具の一覧 */
+.furniture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.furniture-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 12px;
+}
+.furniture-grid button small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.furniture-grid button.active {
+  outline: 2px solid var(--accent);
+  background: var(--accent-weak);
+}
+.furniture-grid svg {
+  background: #f3f5f7;
+  border-radius: 6px;
+}

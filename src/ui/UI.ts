@@ -41,6 +41,9 @@ import {
 } from '../core/materials';
 import { writeMaterialDefaults, writeSaveMode } from '../io/userSettings';
 import { canPickLocation, saveMode } from '../io/saveFile';
+import { FURNITURE, FURNITURE_CATEGORIES, type FurnitureCategory } from '../core/furniture';
+import type { FurnitureTool } from '../tools/FurnitureTool';
+import { furnitureThumb } from './furnitureThumb';
 import { materialSwatch } from '../view/materialTextures';
 import { isStandalone, promptInstall } from '../pwa';
 
@@ -58,7 +61,7 @@ export interface FormOptions {
   cancelLabel?: string;
 }
 
-type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'sheets' | 'present' | 'help';
+type PanelId = 'entity' | 'layers' | 'geo' | 'pointclouds' | 'sheets' | 'furniture' | 'present' | 'help';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -190,7 +193,7 @@ export class UI {
       ['line', 'rect', 'circle'],
       ['pushpull', 'profile', 'move', 'rotate'],
       ['tape', 'eraser', 'paint', 'coord'],
-      ['orbit', 'pan'],
+      ['orbit', 'pan', 'walk'],
     ];
     for (const g of groups) {
       const grp = h('div', { class: 'tool-group' });
@@ -221,6 +224,7 @@ export class UI {
       ['geo', '座標系'],
       ['pointclouds', '点群'],
       ['sheets', '図面'],
+      ['furniture', '家具'],
       ['present', 'プレゼン'],
       ['help', '使い方'],
     ];
@@ -906,7 +910,7 @@ export class UI {
   }
 
   refreshAll(): void {
-    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'sheets', 'present', 'help']);
+    this.refreshPanel(['entity', 'layers', 'geo', 'pointclouds', 'sheets', 'furniture', 'present', 'help']);
   }
 
   private refreshPanel(ids: PanelId[]): void {
@@ -933,6 +937,9 @@ export class UI {
           break;
         case 'sheets':
           this.renderSheets(body);
+          break;
+        case 'furniture':
+          this.renderFurniture(body);
           break;
         case 'present':
           this.renderPresent(body);
@@ -1326,10 +1333,14 @@ export class UI {
         <label><input type="checkbox" data-opt="high" ${st.high ? 'checked' : ''}> 高品質（陰影を強調）</label>
         <label><input type="checkbox" data-opt="showPointClouds" ${st.showPointClouds ? 'checked' : ''}> 点群</label>
         <label><input type="checkbox" data-opt="showSheets" ${st.showSheets ? 'checked' : ''}> 図面</label>
+        <label><input type="checkbox" data-opt="interiorLights" ${st.interiorLights !== false ? 'checked' : ''}> 室内の照明を点ける</label>
       </div>
 
       <h3><span class="step-no">2</span>視点を決める</h3>
       <div class="row wrap"><button data-auto class="primary">おすすめの視点を自動で作る</button><button data-add>今の視点を追加</button></div>
+      <div class="row wrap"><button data-walk class="${app.tool.def.id === 'walk' ? 'primary' : ''}">${app.tool.def.id === 'walk' ? '立ち位置モードを終わる' : '立ち位置を選ぶ（中に入って見る）'}</button></div>
+      <div class="row wrap"><button data-open-furniture>家具・設備を置く…</button></div>
+      <p class="muted small">「立ち位置を選ぶ」→ 床をクリックするとそこに立ち、ドラッグでその場から見回せます（外に出ません）。ホイールや ↑↓ で歩き、気に入ったら「今の視点を追加」。</p>
       <p class="muted small">画面を左ドラッグで回し、ホイールで寄って、気に入った角度で「今の視点を追加」。視点はレイヤーの表示も覚えるので、「レイヤー」で屋根を隠してから追加すると中が見える視点になります。</p>
       <div class="scene-list">
         ${app.scenes.items
@@ -1451,6 +1462,14 @@ export class UI {
     $('[data-exp-png]')!.addEventListener('click', run('画像', () => exportCurrentImage(app, opts())));
     $('[data-exp-video]')!.addEventListener('click', run('動画', (pr) => exportVideo(app, pr)));
     $('[data-slideshow]')!.addEventListener('click', () => this.startSlideshow());
+    $('[data-open-furniture]')?.addEventListener('click', () => this.showPanel('furniture'));
+    $('[data-walk]')?.addEventListener('click', () => {
+      if (app.tool.def.id === 'walk') {
+        app.setTool('select');
+        app.viewport.setNavigationMode('orbit');
+      } else app.setTool('walk');
+      this.refreshPanel(['present']);
+    });
     $('[data-exit]')!.addEventListener('click', () => app.exitPresentation());
   }
 
@@ -1506,6 +1525,50 @@ export class UI {
     show(0, false);
   }
 
+  private furnitureCat: FurnitureCategory = '事務所';
+
+  /** 家具・設備の一覧（選ぶと「家具を置く」ツールになる） */
+  private renderFurniture(body: HTMLDivElement): void {
+    const app = this.app;
+    const tool = app.tools.get('furniture') as FurnitureTool;
+    const active = app.tool === tool ? tool.current?.id : undefined;
+    body.innerHTML = `
+      <h3>家具・設備を置く</h3>
+      <p class="muted small">選んでから 3D 画面をクリックすると置けます。床・壁（背中を壁に付ける）・天井（照明など）に合わせて置き、R キーで 90° 回します。置いた物はグループなので、移動・回転ツールで動かせます。色は「ペイント」で変えられます。</p>
+      <div class="palette-tabs">${FURNITURE_CATEGORIES.map((c) => `<button data-fcat="${c}" class="${c === this.furnitureCat ? 'active' : ''}">${esc(c)}</button>`).join('')}</div>
+      <div class="furniture-grid">
+        ${FURNITURE.filter((f) => f.category === this.furnitureCat)
+          .map(
+            (f) => `<button data-furn="${f.id}" class="${active === f.id ? 'active' : ''}" title="${esc(f.name)}">
+            ${furnitureThumb(f)}
+            <span>${esc(f.name)}</span>
+            <small>${f.size.map((v) => Math.round(v * 1000)).join('×')}</small>
+          </button>`,
+          )
+          .join('')}
+      </div>
+      ${active ? '<div class="row"><button data-fstop>置くのを終わる（Esc）</button></div>' : ''}`;
+    body.querySelectorAll<HTMLButtonElement>('[data-fcat]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.furnitureCat = b.dataset.fcat as FurnitureCategory;
+        this.renderFurniture(body);
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>('[data-furn]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (app.tool !== tool) app.setTool('furniture');
+        tool.setFurniture(b.dataset.furn!);
+        this.renderFurniture(body);
+        // スマホ・タブレットではパネルを閉じて置く場所を見せる
+        this.root.classList.remove('panel-open');
+      }),
+    );
+    body.querySelector('[data-fstop]')?.addEventListener('click', () => {
+      app.setTool('select');
+      this.renderFurniture(body);
+    });
+  }
+
   private renderHelp(body: HTMLDivElement): void {
     body.innerHTML = `
       <h3 id="install-help">デスクトップのアプリとして使う</h3>
@@ -1537,6 +1600,15 @@ export class UI {
         <li><b>書き出す</b>: PowerPoint・PDF・画像（ZIP）・動画、または「スライドショー」でそのまま会議で説明</li>
       </ol>
       <p class="muted">日時を変えると、その日・その時刻の太陽の位置で影が付きます（モデルの位置の緯度経度で計算。日影の検討にも）。</p>
+      <h3>室内を見る（立ち位置）</h3>
+      <ol class="steps">
+        <li>左の「立ち位置」（G キー）、またはプレゼンの「立ち位置を選ぶ」を押す</li>
+        <li>床をクリック（タップ）すると、そこに目の高さ 1.6m で立ちます（壁をクリックするとその手前に）</li>
+        <li>ドラッグでその場から見回す（オービットと違って外に出ません）。ホイール・↑↓で前後に歩き、←→で向きを変える（Shift+←→ で横歩き）。壁の手前で止まります</li>
+        <li>数字を打つと目の高さを変えられます（例: 1200 で座った目線）。気に入ったら「今の視点を追加」</li>
+      </ol>
+      <h3>家具・設備を置く</h3>
+      <p class="muted">「家具」パネルで選んで 3D 画面をクリック。床・壁（背中を壁に付ける）・天井（照明・エアコン）に合わせて置き、R キーで 90° 回します。照明器具はプレゼンの「室内の照明を点ける」で実際に光ります。</p>
       <h3>平面図・立面図・断面図から 3D を作る</h3>
       <ol class="steps">
         <li>「読み込み → 図面」で平面図を開く（DXF / SXF / JWW / PDF / 画像）。地面に水平に置かれます</li>
