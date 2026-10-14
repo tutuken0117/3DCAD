@@ -76,6 +76,18 @@ export class App {
     this.ar = new ARViewer(this);
     this.presentation = new Presentation(this);
     this.scenes = new SceneManager(this.viewport);
+    // 視点ごとのレイヤー表示（屋根を隠した「中が見える」視点など）
+    this.scenes.layerState = {
+      get: () => [...this.model.layers.values()].filter((l) => !l.visible).map((l) => l.name),
+      set: (hidden) => {
+        let changed = false;
+        for (const l of this.model.layers.values()) {
+          const v = !hidden.includes(l.name);
+          if (l.visible !== v) (l.visible = v), (changed = true);
+        }
+        if (changed) this.model.emitChange();
+      },
+    };
 
     for (const t of [
       new SelectTool(this),
@@ -344,10 +356,12 @@ export class App {
     const vp = this.viewport;
     const keepP = vp.camera.position.clone();
     const keepT = vp.controls.target.clone();
+    const keepHidden = this.scenes.layerState?.get();
     for (const s of list) {
       await this.scenes.goTo(s, false);
       s.thumbnail = this.presentation.renderImage({ width: 320, height: 180 }).toDataURL('image/jpeg', 0.8);
     }
+    if (keepHidden) this.scenes.layerState?.set(keepHidden);
     vp.camera.position.copy(keepP);
     vp.controls.target.copy(keepT);
     vp.controls.update();

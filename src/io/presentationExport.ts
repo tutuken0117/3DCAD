@@ -47,6 +47,7 @@ async function renderScenes(
   const vp = app.viewport;
   const keepP = vp.camera.position.clone();
   const keepT = vp.controls.target.clone();
+  const keepHidden = app.scenes.layerState?.get();
   const scenes = scenesForExport(app);
   const { width, height } = IMAGE_SIZES[opt.size];
   try {
@@ -61,6 +62,7 @@ async function renderScenes(
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     }
   } finally {
+    if (keepHidden) app.scenes.layerState?.set(keepHidden);
     vp.camera.position.copy(keepP);
     vp.controls.target.copy(keepT);
     vp.controls.update();
@@ -211,6 +213,7 @@ export async function exportVideo(app: App, onProgress?: (i: number, n: number) 
   const stopped = new Promise((res) => (rec.onstop = res));
   const keepP = vp.camera.position.clone();
   const keepT = vp.controls.target.clone();
+  const keepHidden = app.scenes.layerState?.get();
   const wait = (ms: number) =>
     new Promise<void>((res) => {
       const t0 = performance.now();
@@ -235,6 +238,7 @@ export async function exportVideo(app: App, onProgress?: (i: number, n: number) 
   } finally {
     r.setPixelRatio(prevPR);
     vp.refreshSize();
+    if (keepHidden) app.scenes.layerState?.set(keepHidden);
     vp.camera.position.copy(keepP);
     vp.controls.target.copy(keepT);
     vp.controls.update();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Vector3 } from 'three';
 import { PerspectiveCamera } from 'three';
-import { fitDistance, recommendedViews } from '../src/view/Scenes';
+import { fitDistance, recommendedViews, SceneManager } from '../src/view/Scenes';
 
 describe('おすすめの視点', () => {
   const box = new Box3(new Vector3(0, 0, -6), new Vector3(10, 5, 0));
@@ -46,5 +46,31 @@ describe('おすすめの視点', () => {
   });
   it('モデルが無ければ視点も無い', () => {
     expect(recommendedViews(new Box3())).toEqual([]);
+  });
+});
+
+describe('視点ごとのレイヤー表示', () => {
+  const fakeViewport = () => {
+    const cam = { position: new Vector3(), }
+    return {
+      camera: cam,
+      controls: { target: new Vector3(), update() {} },
+      requestRender() {},
+      onFrame() {},
+    } as unknown as ConstructorParameters<typeof SceneManager>[0];
+  };
+  it('追加した時の非表示レイヤーを覚え、切り替えると戻す', async () => {
+    let hidden: string[] = [];
+    const m = new SceneManager(fakeViewport());
+    m.layerState = { get: () => [...hidden], set: (h) => (hidden = [...h]) };
+    const outside = m.add({ name: '外観', position: [10, 5, 10], target: [0, 0, 0] });
+    hidden = ['屋根'];
+    const inside = m.add({ name: '中', position: [10, 5, 10], target: [0, 0, 0] });
+    expect(outside.hiddenLayers).toEqual([]);
+    expect(inside.hiddenLayers).toEqual(['屋根']);
+    await m.goTo(outside, false);
+    expect(hidden).toEqual([]);
+    await m.goTo(inside, false);
+    expect(hidden).toEqual(['屋根']);
   });
 });

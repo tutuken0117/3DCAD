@@ -9,6 +9,8 @@ export interface SceneView {
   target: [number, number, number];
   /** 一覧に出す小さな画像（data URL） */
   thumbnail?: string;
+  /** この視点で隠すレイヤー（屋根を外して中を見せる など）。未指定ならレイヤーの表示を変えない */
+  hiddenLayers?: string[];
 }
 
 export type SceneData = Omit<SceneView, 'id'>;
@@ -79,6 +81,8 @@ export class SceneManager {
   readonly items: SceneView[] = [];
   private nextId = 1;
   private listeners = new Set<() => void>();
+  /** レイヤーの表示状態の読み書き（App が設定する） */
+  layerState?: { get(): string[]; set(hidden: string[]): void };
   private anim: { from: [Vector3, Vector3]; to: [Vector3, Vector3]; t0: number; dur: number; done?: () => void } | null = null;
 
   constructor(private viewport: Viewport) {
@@ -104,8 +108,10 @@ export class SceneManager {
     });
   }
 
+  /** 視点を追加（レイヤーの表示状態は、指定がなければ今の状態を覚える） */
   add(d: SceneData): SceneView {
     const s: SceneView = { ...d, id: this.nextId++ };
+    if (!s.hiddenLayers && this.layerState) s.hiddenLayers = this.layerState.get();
     this.items.push(s);
     this.emit();
     return s;
@@ -130,6 +136,7 @@ export class SceneManager {
     const vp = this.viewport;
     const toP = new Vector3(...s.position);
     const toT = new Vector3(...s.target);
+    if (s.hiddenLayers && this.layerState) this.layerState.set(s.hiddenLayers);
     if (!animate) {
       this.anim = null;
       vp.camera.position.copy(toP);

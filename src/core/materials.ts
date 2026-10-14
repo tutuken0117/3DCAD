@@ -45,6 +45,7 @@ export const MATERIALS: MaterialDef[] = [
   { id: 'concrete', name: 'コンクリート打放し', category: '外壁', color: '#b4b2ad', roughness: 0.9, metalness: 0, pattern: 'concrete', tile: 1.8 },
   { id: 'wood-cedar', name: '木の板張り', category: '外壁', color: '#a8794f', roughness: 0.8, metalness: 0, pattern: 'wood', tile: 1.2 },
   { id: 'galva-black', name: '黒いガルバリウム（縦張り）', category: '外壁', color: '#3a3d40', roughness: 0.45, metalness: 0.5, pattern: 'metal-vertical', tile: 1.4 },
+  { id: 'galva-silver', name: 'ガルバリウム角波（シルバー）', category: '外壁', color: '#b8bdc2', roughness: 0.4, metalness: 0.55, pattern: 'metal-vertical', tile: 1.0 },
   { id: 'roof-galva', name: 'ガルバリウム屋根（立平）', category: '屋根', color: '#4b5157', roughness: 0.4, metalness: 0.55, pattern: 'roof-metal', tile: 1.8 },
   { id: 'roof-tile', name: '瓦', category: '屋根', color: '#555b62', roughness: 0.6, metalness: 0.1, pattern: 'roof-tile', tile: 1.2 },
   { id: 'roof-slate', name: 'スレート', category: '屋根', color: '#5d5f63', roughness: 0.75, metalness: 0, pattern: 'slate', tile: 1.2 },

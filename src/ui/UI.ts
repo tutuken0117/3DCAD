@@ -1177,7 +1177,7 @@ export class UI {
 
       <h3><span class="step-no">2</span>視点を決める</h3>
       <div class="row wrap"><button data-auto class="primary">おすすめの視点を自動で作る</button><button data-add>今の視点を追加</button></div>
-      <p class="muted small">画面を左ドラッグで回し、ホイールで寄って、気に入った角度で「今の視点を追加」。</p>
+      <p class="muted small">画面を左ドラッグで回し、ホイールで寄って、気に入った角度で「今の視点を追加」。視点はレイヤーの表示も覚えるので、「レイヤー」で屋根を隠してから追加すると中が見える視点になります。</p>
       <div class="scene-list">
         ${app.scenes.items
           .map(
@@ -1185,6 +1185,7 @@ export class UI {
               <button class="scene-thumb" data-go title="この視点を見る">${sc.thumbnail ? `<img src="${sc.thumbnail}" alt="">` : '<span>▶</span>'}</button>
               <div class="scene-meta">
                 <input data-name value="${esc(sc.name)}" aria-label="シーン名">
+                ${sc.hiddenLayers?.length ? `<span class="muted small">非表示: ${esc(sc.hiddenLayers.join('・'))}</span>` : ''}
                 <div class="row tight">
                   <button data-up title="前へ" ${i === 0 ? 'disabled' : ''}>↑</button>
                   <button data-down title="後へ" ${i === app.scenes.items.length - 1 ? 'disabled' : ''}>↓</button>
@@ -1271,6 +1272,7 @@ export class UI {
         const t = app.viewport.controls.target;
         sc.position = [cam.x, cam.y, cam.z];
         sc.target = [t.x, t.y, t.z];
+        sc.hiddenLayers = app.scenes.layerState?.get();
         void app.makeThumbnails([sc]);
       });
     });
