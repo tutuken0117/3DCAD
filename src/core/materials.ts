@@ -62,6 +62,7 @@ export const MATERIALS: MaterialDef[] = [
   m('siding-beige', '横張りサイディング（ベージュ）', '外壁', dull('#d9cdb6', 'siding', 1.2, 0.8)),
   m('siding-gray', 'サイディング（グレー）', '外壁', dull('#9ea2a5', 'siding', 1.2)),
   m('siding-navy', 'サイディング（紺）', '外壁', dull('#3f4a5c', 'siding', 1.2)),
+  m('siding-brown', 'サイディング（ブラウン）', '外壁', dull('#6e5444', 'siding', 1.2)),
   m('siding-woodgrain', '木目調サイディング', '外壁', dull('#9b7553', 'wood', 1.6, 0.8)),
   m('alc', 'ALC パネル', '外壁', dull('#d6d3cc', 'panel', 1.8, 0.9)),
   m('tile-brown', '外壁タイル（茶）', '外壁', dull('#8a5a3f', 'brick', 0.6)),
@@ -92,6 +93,7 @@ export const MATERIALS: MaterialDef[] = [
   m('glass', 'ガラス（青み）', '開口', { color: '#9fc0d8', roughness: 0.05, metalness: 0, opacity: 0.28, pattern: 'plain', tile: 2 }),
   m('glass-clear', '透明ガラス', '開口', { color: '#d6e6ee', roughness: 0.03, metalness: 0, opacity: 0.12, pattern: 'plain', tile: 2 }),
   m('glass-frosted', 'すりガラス', '開口', { color: '#e3e8eb', roughness: 0.6, metalness: 0, opacity: 0.85, pattern: 'plain', tile: 2 }),
+  m('polycarbonate', 'ポリカ波板（明り取り）', '開口', { color: '#dfe6e8', roughness: 0.5, metalness: 0, opacity: 0.45, pattern: 'metal-vertical', tile: 1 }),
   m('glass-mirror', '熱線反射ガラス', '開口', { color: '#4f6475', roughness: 0.05, metalness: 0.7, opacity: 0.8, pattern: 'glass', tile: 2 }),
   m('sash-black', 'サッシ（黒）', '開口', metal('#2b2d30', 'plain', 1)),
   m('sash-silver', 'サッシ（シルバー）', '開口', metal('#b9bcbf', 'plain', 1)),
@@ -110,6 +112,7 @@ export const MATERIALS: MaterialDef[] = [
   m('deck', 'ウッドデッキ', '床・地面', dull('#8f6a46', 'flooring', 1.5, 0.75)),
   m('flooring', 'フローリング', '床・地面', dull('#b98b5e', 'flooring', 1.8, 0.6)),
   m('carpet', 'タイルカーペット', '床・地面', dull('#6b7280', 'tile', 1.0, 1)),
+  m('vinyl-sheet', '長尺塩ビシート', '床・地面', dull('#c9c3b6', 'plaster', 2, 0.6)),
   // 家具・設備
   m('wood-light', '家具の木（明るい）', '家具', dull('#c9a77c', 'wood', 0.8, 0.6)),
   m('wood-walnut', '家具の木（ウォールナット）', '家具', dull('#5b3d2a', 'wood', 0.8, 0.6)),
