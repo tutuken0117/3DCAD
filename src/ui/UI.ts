@@ -176,6 +176,7 @@ export class UI {
             <button data-view="back">背面（北から）</button>
             <button data-view="left">左側面（西から）</button>
             <hr>
+            <button data-act="fullview">モデルだけを全画面で表示</button>
             <button data-act="ortho">平行投影 / 透視投影 切替</button>
             <button data-act="zoom">全体表示（Shift+Z）</button>
             <hr>
@@ -188,6 +189,7 @@ export class UI {
         <button data-act="zoom" class="icon" title="全体表示 (Shift+Z)">${ICONS.zoom}</button>
       </div>
       <button class="install-button" data-act="install" hidden title="デスクトップのアプリとしてインストール（専用ウィンドウ・オフラインで起動）">${ICONS.install}<span>アプリにする</span></button>
+      <button class="icon fullview-button" data-act="fullview" title="モデルだけを全画面で表示">${ICONS.expand}</button>
       <button class="present-button" data-act="present">${ICONS.present}<span>プレゼン資料を作る</span></button>
       <button class="ar-button" data-act="ar">${ICONS.ar}<span>AR で見る</span></button>`;
     this.root.appendChild(header);
@@ -345,6 +347,7 @@ export class UI {
       }
       if (act === 'ar') void app.ar.start();
       if (act === 'install') void promptInstall(app);
+      if (act === 'fullview') this.setModelOnly(true);
       if (act === 'present') {
         if (app.presentation.active) app.exitPresentation();
         else app.enterPresentation();
@@ -360,6 +363,10 @@ export class UI {
     });
     this.undoBtn = header.querySelector('[data-act=undo]')!;
     this.refreshSaveMode();
+    // ブラウザの全画面を Esc で抜けたら、モデルだけの表示も終える
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && this.root.classList.contains('model-only')) this.setModelOnly(false);
+    });
     this.redoBtn = header.querySelector('[data-act=redo]')!;
     app.history.onChange(() => this.updateUndo());
     this.updateUndo();
@@ -586,6 +593,52 @@ export class UI {
     } else return;
     this.setPaintColor(MAT_PREFIX + id);
     if (final) this.renderPalette();
+  }
+
+  private fullviewBar: HTMLDivElement | null = null;
+
+  /**
+   * モデルだけを全画面で表示（メニュー・パネル・ツールを隠す）。スマホなど小さな画面向け。
+   * 右上の小さなボタンで「全体表示」「立ち位置」「戻る」だけ使える。
+   */
+  setModelOnly(on: boolean): void {
+    const app = this.app;
+    this.root.classList.toggle('model-only', on);
+    this.root.classList.remove('panel-open');
+    if (on) {
+      if (!this.fullviewBar) {
+        const bar = h('div', { class: 'fullview-bar' });
+        bar.innerHTML = `
+          <button data-fv="zoom" title="全体を表示">${ICONS.zoom}</button>
+          <button data-fv="walk" title="立ち位置（床をタップしてそこに立つ）">${ICONS.walk}</button>
+          <button data-fv="exit" class="fv-exit" title="全画面を終わる">✕ 戻る</button>`;
+        bar.addEventListener('click', (e) => {
+          const b = (e.target as HTMLElement).closest('button');
+          if (!b) return;
+          if (b.dataset.fv === 'zoom') app.zoomExtents();
+          if (b.dataset.fv === 'walk') {
+            if (app.tool.def.id === 'walk') app.setTool('select');
+            else app.setTool('walk');
+            b.classList.toggle('on', app.tool.def.id === 'walk');
+            if (app.tool.def.id !== 'walk') app.viewport.setNavigationMode(app.presentation.active ? 'orbit' : 'default');
+          }
+          if (b.dataset.fv === 'exit') this.setModelOnly(false);
+        });
+        this.viewportEl.appendChild(bar);
+        this.fullviewBar = bar;
+      }
+      this.fullviewBar.hidden = false;
+      // 指 1 本で回せるように（立ち位置のときはそのまま）
+      if (app.tool.def.id !== 'walk') app.viewport.setNavigationMode('orbit');
+      document.documentElement.requestFullscreen?.().catch(() => {});
+      this.toast('モデルだけを表示しています。右上の「✕ 戻る」で元に戻ります', 4000);
+    } else {
+      if (this.fullviewBar) this.fullviewBar.hidden = true;
+      if (app.tool.def.id === 'walk') app.setTool('select');
+      app.viewport.setNavigationMode(app.presentation.active ? 'orbit' : 'default');
+      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+    }
+    app.viewport.refreshSize();
   }
 
   /** 保存のしかたの選択状態（メニューの ✓） */

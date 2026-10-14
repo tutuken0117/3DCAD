@@ -208,7 +208,7 @@ export class Model {
    */
   addPolyFacesAsGroup(
     points: Vector3[],
-    faces: { outer: number[]; holes: number[][]; color?: string }[],
+    faces: { outer: number[]; holes: number[][]; color?: string; tris?: [number, number, number][] }[],
     name: string,
     layer = this.currentLayer,
     color?: string,
@@ -231,7 +231,18 @@ export class Model {
       const holes = f.holes.map((h) => h.map(vid));
       // 重なった頂点で潰れたループは除く
       if (new Set(outer).size < 3) continue;
-      if (this.addFaceFromVertices(outer, layer, f.color ?? color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) count++;
+      if (this.addFaceFromVertices(outer, layer, f.color ?? color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) {
+        count++;
+        continue;
+      }
+      // 輪郭が自分と交差するなどで面にできなかったときは、三角形ごとの面にする（穴があかないように）
+      for (const t of f.tris ?? []) {
+        const tri = t.map(vid);
+        if (new Set(tri).size < 3) continue;
+        const [a, b, c] = tri.map((v) => this.pos(v));
+        if (new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, a)).lengthSq() < 1e-14) continue;
+        if (this.addFaceFromVertices(tri, layer, f.color ?? color) !== undefined) count++;
+      }
     }
     if (!count) {
       this.groups.delete(gid);

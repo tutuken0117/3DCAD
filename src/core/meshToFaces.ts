@@ -4,6 +4,8 @@ export interface PolyFace {
   /** 外周（頂点インデックス、法線の向きに反時計回り） */
   outer: number[];
   holes: number[][];
+  /** もとの三角形（輪郭がうまく作れなかったときに、三角形ごとの面にして取りこぼさないため） */
+  tris?: [number, number, number][];
 }
 
 /**
@@ -100,7 +102,7 @@ export function meshToFaces(points: Vector3[], tris: [number, number, number][],
     const signed = loops.map((L) => signedArea(L, points, normal));
     let outerIdx = 0;
     for (let i = 1; i < loops.length; i++) if (signed[i] > signed[outerIdx]) outerIdx = i;
-    faces.push({ outer: loops[outerIdx], holes: loops.filter((_, i) => i !== outerIdx && loops[i].length >= 3) });
+    faces.push({ outer: loops[outerIdx], holes: loops.filter((_, i) => i !== outerIdx && loops[i].length >= 3), tris: ts.map((t) => tris[t]) });
   }
   return faces;
 }

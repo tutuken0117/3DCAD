@@ -1140,3 +1140,49 @@ select {
   text-decoration: none;
   font-weight: 600;
 }
+
+/* モデルだけを全画面で表示 */
+.model-only .topbar,
+.model-only .toolbar,
+.model-only .sidepanel,
+.model-only .statusbar,
+.model-only .touchbar,
+.model-only .material-palette {
+  display: none !important;
+}
+.fullview-bar {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  z-index: 40;
+  display: flex;
+  gap: 6px;
+}
+.fullview-bar[hidden] {
+  display: none;
+}
+.fullview-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  min-width: 40px;
+  justify-content: center;
+  background: rgba(32, 48, 63, 0.82);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+.fullview-bar button.on {
+  background: var(--accent);
+}
+.fullview-bar .fv-exit {
+  padding: 0 14px;
+  font-weight: 600;
+}
+.topbar .fullview-button {
+  color: #fff;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.35);
+}

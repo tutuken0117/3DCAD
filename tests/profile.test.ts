@@ -92,3 +92,39 @@ describe('図面の外形から立体を作る', () => {
     expect(faces[0].holes.length).toBe(1);
   });
 });
+
+describe('ブーリアン結果の面を取りこぼさない', () => {
+  it('傾いた妻壁と箱を合わせた外壁でも、外側の面の面積が欠けない', async () => {
+    const { default: Module } = await import('manifold-3d');
+    const { meshToFaces } = await import('../src/core/meshToFaces');
+    const { Model } = await import('../src/core/Model');
+    const { Vector3 } = await import('three');
+    const M = await Module();
+    M.setup();
+    const { Manifold, CrossSection } = M;
+    const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) => Manifold.cube([x1 - x0, y1 - y0, z1 - z0]).translate([x0, y0, z0]);
+    const h = 0.1;
+    const W = 0.04;
+    const ru = (y: number) => 6.3 - 0.1 * (y + h);
+    const side = (x0: number, x1: number) =>
+      new CrossSection([[[-h - W, 3.1], [8 + h + W, 3.1], [8 + h + W, ru(8 + h + W)], [-h - W, ru(-h - W)]]], 'Positive')
+        .extrude(x1 - x0)
+        .transform([0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, x0, 0, 0, 1]);
+    const solid = box(-h - W, 24.5 + h + W, -h - W, -h, 3.1, ru(-h)).add(box(-h - W, 24.5 + h + W, 8 + h, 8 + h + W, 3.1, ru(8 + h + W))).add(side(24.5 + h, 24.5 + h + W));
+    const mesh = solid.getMesh();
+    const pts = [];
+    for (let i = 0; i < mesh.vertProperties.length; i += mesh.numProp) pts.push(new Vector3(mesh.vertProperties[i], mesh.vertProperties[i + 2], -mesh.vertProperties[i + 1]));
+    const tris: [number, number, number][] = [];
+    for (let i = 0; i < mesh.triVerts.length; i += 3) tris.push([mesh.triVerts[i], mesh.triVerts[i + 1], mesh.triVerts[i + 2]]);
+    const m = new Model();
+    m.addPolyFacesAsGroup(pts, meshToFaces(pts, tris), '外壁');
+    let area = 0;
+    for (const f of m.faces.values()) {
+      const n = m.faceNormal(f);
+      if (n.x > 0.99 && m.facePoints(f).every((p) => Math.abs(p.x - (24.5 + h + W)) < 1e-6)) area += m.faceArea(f);
+    }
+    // 台形（高さ 3.204 〜 2.376、幅 8.28）
+    const expected = ((ru(-h - W) - 3.1 + (ru(8 + h + W) - 3.1)) / 2) * (8 + 2 * h + 2 * W);
+    expect(area).toBeGreaterThan(expected * 0.98);
+  });
+});
