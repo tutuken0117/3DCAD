@@ -220,7 +220,7 @@ export class App {
       if (k === 'z' && !e.shiftKey) return (e.preventDefault(), this.undo());
       if (k === 'y' || (k === 'z' && e.shiftKey)) return (e.preventDefault(), this.redo());
       if (k === 's') return (e.preventDefault(), void this.saveProject(e.shiftKey));
-      if (k === 'o') return (e.preventDefault(), this.ui.pickFile('open'));
+      if (k === 'o') return (e.preventDefault(), void this.openProjectDialog());
       if (k === 'a' && !inInput) return (e.preventDefault(), this.selection.selectAll());
       if (k === 'g' && !e.shiftKey) return (e.preventDefault(), this.makeGroupFromSelection());
       if (k === 'g' && e.shiftKey) return (e.preventDefault(), this.explodeSelectedGroup());
@@ -626,15 +626,19 @@ export class App {
     }, 1500);
   }
 
+  /** 前回の続き（自動保存）を開く。起動時は新規で始め、必要なときにメニューから呼ぶ */
   async restoreAutosave(): Promise<void> {
     const p = await loadAutosave();
-    if (!p || (p.model.faces.length === 0 && p.model.edges.length === 0 && !p.sheets?.length)) return;
-    // 毎回たずねずに、前回の続きをそのまま開く（新しく始めるときは「新規」）
+    if (!p || (p.model.faces.length === 0 && p.model.edges.length === 0 && !p.sheets?.length)) {
+      this.ui.toast('自動保存されたデータはありません');
+      return;
+    }
     const when = new Date(p.savedAt).toLocaleString('ja-JP');
+    if (!this.model.isEmpty() && !(await this.ui.confirm('前回の続きを開く', `今のモデルを閉じて、${when} に自動保存された作業を開きますか？`, '開く'))) return;
     await this.loadProjectFile(p);
     if (p.name) this.projectName = p.name;
     this.zoomExtents();
-    this.ui.toast(`前回の続き（${when} の自動保存）を開きました。新しく始めるときは「新規」を押してください`, 7000);
+    this.ui.toast(`前回の続き（${when} の自動保存）を開きました`);
   }
 
   // ---- サンプル ----

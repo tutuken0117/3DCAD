@@ -123,7 +123,13 @@ export class UI {
       <button class="menu-toggle" data-act="menu" title="メニュー">メニュー ▾</button>
       <div class="menu">
         <button data-act="new">新規</button>
-        <button data-act="open">開く</button>
+        <div class="dropdown">
+          <button>開く ▾</button>
+          <div class="dropdown-menu">
+            <button data-act="open">ファイルを開く… <small>Ctrl+O</small></button>
+            <button data-act="restore">前回の続きを開く（自動保存）</button>
+          </div>
+        </div>
         <div class="dropdown">
           <button>保存 ▾</button>
           <div class="dropdown-menu">
@@ -313,6 +319,7 @@ export class UI {
       // スマホのメニュー: 項目を選んだら閉じる（分類の見出しは閉じない）
       if (b.closest('.menu') && !(b.parentElement?.classList.contains('dropdown') && !b.closest('.dropdown-menu'))) header.classList.remove('menu-open');
       if (act === 'open') void app.openProjectDialog();
+      if (act === 'restore') void app.restoreAutosave();
       if (act === 'save') void app.saveProject();
       if (act === 'save-as') void app.saveProject(true);
       if (act === 'save-mode-ask' || act === 'save-mode-download') {
@@ -1593,6 +1600,8 @@ export class UI {
       <h3>1 ファイル版（すぐ開ける・オフライン）</h3>
       <p class="muted">インストールしなくても、1 つの HTML ファイルをダブルクリックするだけで使えます（インターネット不要。USB メモリで持ち運んだり、メールで渡したりもできます）。</p>
       <div class="row"><a class="button-link" href="./3DCAD.html" download="3DCAD.html">1 ファイル版をダウンロード（約 9MB）</a></div>
+      <h3>起動と自動保存</h3>
+      <p class="muted">起動すると毎回新規（空）で始まります。作業は自動でブラウザに保存されているので、続きをするときは「開く ▾」→「前回の続きを開く（自動保存）」。保存したファイルは「開く ▾」→「ファイルを開く」。</p>
       <h3>保存する場所</h3>
       <p class="muted">「保存 ▾」の「名前を付けて保存」で場所と名前を選べます（PC の Chrome・Edge）。一度保存すると「保存（Ctrl+S）」は同じファイルに上書きします。スマホでは共有メニューの「ファイルに保存」「ドライブに保存」などから保存先を選びます。毎回選ばずにダウンロードフォルダへ保存したいときは「保存 ▾」→「ダウンロードフォルダに保存」。</p>
       <h3>プレゼン資料を作る（初めてでも 3 ステップ）</h3>

@@ -11,7 +11,5 @@ const app = new App(root);
 // 開発時のデバッグ用
 (window as unknown as { app: App }).app = app;
 setupPwa(app);
-// ダブルクリックで開いたファイルがあればそれを開き、無ければ前回の続きを復元
-void handleLaunch(app).then((opened) => {
-  if (!opened) void app.restoreAutosave();
-});
+// ダブルクリックで開いたファイルがあればそれを開く。無ければ新規（前回の続きは「開く ▾」から）
+void handleLaunch(app);
