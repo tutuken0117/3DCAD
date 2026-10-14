@@ -19,25 +19,46 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 
  * おすすめの視点を計算する（初めての人でも、ボタン 1 つで見栄えのよい視点がそろう）。
  * 鳥瞰（南東）、人の目線（南正面）、鳥瞰（北西）、真上（配置）
  */
+/**
+ * 視線の向き dir（中心 → カメラ）から見て、箱の 8 隅がすべて画面に収まる距離。
+ * 外接球で測るより近く、細長い建物でも画面いっぱいに写る。
+ */
+export function fitDistance(box: Box3, dir: Vector3, fovDeg: number, aspect: number, margin = 1.08): number {
+  const c = box.getCenter(new Vector3());
+  const f = dir.clone().normalize().negate(); // カメラの前方
+  const up = Math.abs(f.y) > 0.99 ? new Vector3(0, 0, -1) : new Vector3(0, 1, 0);
+  const r = new Vector3().crossVectors(f, up).normalize();
+  const u = new Vector3().crossVectors(r, f).normalize();
+  const tv = Math.tan((fovDeg * Math.PI) / 360);
+  const th = tv * aspect;
+  let d = 0;
+  for (const x of [box.min.x, box.max.x])
+    for (const y of [box.min.y, box.max.y])
+      for (const z of [box.min.z, box.max.z]) {
+        const p = new Vector3(x, y, z).sub(c);
+        const depth = p.dot(f);
+        d = Math.max(d, (Math.abs(p.dot(r)) * margin) / th - depth, (Math.abs(p.dot(u)) * margin) / tv - depth);
+      }
+  return Math.max(d, 1);
+}
+
+/**
+ * おすすめの視点を計算する（初めての人でも、ボタン 1 つで見栄えのよい視点がそろう）。
+ * 鳥瞰（南東）、人の目線（南正面）、鳥瞰（北西）、真上（配置）
+ */
 export function recommendedViews(box: Box3, fovDeg = 45, aspect = 16 / 9): SceneData[] {
   if (box.isEmpty()) return [];
   const c = box.getCenter(new Vector3());
   const size = box.getSize(new Vector3());
-  const radius = Math.max(1, size.length() / 2);
-  const vfov = (fovDeg * Math.PI) / 180;
-  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
-  const fit = radius / Math.sin(Math.min(vfov, hfov) / 2);
   const arr = (v: Vector3): [number, number, number] => [v.x, v.y, v.z];
 
   const views: SceneData[] = [];
   // 鳥瞰（南東から）
   const se = new Vector3(1, 0.75, 1).normalize();
-  views.push({ name: '鳥瞰（南東から）', position: arr(c.clone().addScaledVector(se, fit * 1.15)), target: arr(c) });
+  views.push({ name: '鳥瞰（南東から）', position: arr(c.clone().addScaledVector(se, fitDistance(box, se, fovDeg, aspect))), target: arr(c) });
   // 人の目線（南正面から）: 縦の線がまっすぐ見えるよう、ほぼ水平に見る
   const eyeY = box.min.y + 1.6;
-  const distW = size.x / 2 / Math.tan(hfov / 2);
-  const distH = (size.y + 1) / 2 / Math.tan(vfov / 2);
-  const d = Math.max(distW, distH) * 1.25 + size.z / 2;
+  const d = fitDistance(box, new Vector3(0, 0, 1), fovDeg, aspect, 1.05);
   const lookY = box.min.y + Math.max(1.6, size.y * 0.45);
   views.push({
     name: '人の目線（南正面）',
@@ -46,10 +67,10 @@ export function recommendedViews(box: Box3, fovDeg = 45, aspect = 16 / 9): Scene
   });
   // 鳥瞰（北西から）
   const nw = new Vector3(-1, 0.75, -1).normalize();
-  views.push({ name: '鳥瞰（北西から）', position: arr(c.clone().addScaledVector(nw, fit * 1.15)), target: arr(c) });
+  views.push({ name: '鳥瞰（北西から）', position: arr(c.clone().addScaledVector(nw, fitDistance(box, nw, fovDeg, aspect))), target: arr(c) });
   // 真上（配置図）
-  const top = Math.max(size.x / aspect, size.z) / 2 / Math.tan(vfov / 2) * 1.2 + size.y;
-  views.push({ name: '真上（配置）', position: [c.x, c.y + top, c.z + 0.001], target: arr(c) });
+  const top = new Vector3(0, 1, 0.001).normalize();
+  views.push({ name: '真上（配置）', position: arr(c.clone().addScaledVector(top, fitDistance(box, top, fovDeg, aspect))), target: arr(c) });
   return views;
 }
 

@@ -39,6 +39,8 @@ export interface MaterialDef {
 export const MATERIALS: MaterialDef[] = [
   { id: 'plaster-white', name: '白い塗り壁', category: '外壁', color: '#ece9e2', roughness: 0.95, metalness: 0, pattern: 'plaster', tile: 2 },
   { id: 'siding-beige', name: '横張りサイディング', category: '外壁', color: '#d9cdb6', roughness: 0.8, metalness: 0, pattern: 'siding', tile: 1.2 },
+  { id: 'siding-white', name: '窯業系サイディング（白）', category: '外壁', color: '#e4e2dc', roughness: 0.85, metalness: 0, pattern: 'siding', tile: 1.2 },
+  { id: 'tile-brown', name: '外壁タイル（茶）', category: '外壁', color: '#8a5a3f', roughness: 0.85, metalness: 0, pattern: 'brick', tile: 0.6 },
   { id: 'brick-red', name: 'レンガ', category: '外壁', color: '#a5583c', roughness: 0.9, metalness: 0, pattern: 'brick', tile: 0.9 },
   { id: 'concrete', name: 'コンクリート打放し', category: '外壁', color: '#b4b2ad', roughness: 0.9, metalness: 0, pattern: 'concrete', tile: 1.8 },
   { id: 'wood-cedar', name: '木の板張り', category: '外壁', color: '#a8794f', roughness: 0.8, metalness: 0, pattern: 'wood', tile: 1.2 },

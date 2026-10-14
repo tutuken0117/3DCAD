@@ -6,6 +6,7 @@ import { Selection } from './core/Selection';
 import { intersectProfiles } from './core/profileSolid';
 import { GeoReference } from './geo/GeoReference';
 import { parseDxf, decodeDxf } from './io/dxf';
+import { parseJww } from './io/jww';
 import type { Drawing2D } from './io/drawing2d';
 import { extrudeLayer, importDrawing } from './io/drawingImport';
 import { downloadBlob, exportDXF, exportGLB, exportOBJ, exportUSDZ } from './io/export';
@@ -445,14 +446,14 @@ export class App {
     const name = file.name.toLowerCase();
     try {
       if (name.endsWith('.json') || name.endsWith('.3dcad')) return await this.openProject(file);
-      if (name.endsWith('.dxf') || name.endsWith('.sfc') || name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
+      if (name.endsWith('.dxf') || name.endsWith('.sfc') || name.endsWith('.jww') || name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
         return await this.importSheetFile(file);
       }
       if (detectPointCloudFormat(name)) return await this.importPointCloudFile(file);
-      if (name.endsWith('.p21') || name.endsWith('.dwg') || name.endsWith('.jww')) {
+      if (name.endsWith('.p21') || name.endsWith('.dwg')) {
         this.ui.alert(
           '未対応の形式',
-          `${file.name} は直接読み込めません。<br>発注図面を CAD（または SXF ブラウザ・Jw_cad など）で <b>DXF</b> か <b>SFC</b> に変換してから読み込んでください。PDF なら図面シートとして読み込めます。`,
+          `${file.name} は直接読み込めません。<br>発注図面を CAD（または SXF ブラウザなど）で <b>DXF</b>・<b>SFC</b>・<b>JWW</b> に変換してから読み込んでください。PDF なら図面シートとして読み込めます。`,
         );
         return;
       }
@@ -632,7 +633,7 @@ export class App {
     return box;
   }
 
-  /** 図面ファイル（DXF / SFC / PDF / 画像）を図面シートとして読み込む */
+  /** 図面ファイル（DXF / SFC / JWW / PDF / 画像）を図面シートとして読み込む */
   async importSheetFile(file: File, presetView?: SheetView): Promise<void> {
     const name = file.name.toLowerCase();
     const buf = await file.arrayBuffer();
@@ -645,6 +646,8 @@ export class App {
         ], { description: 'SFC の座標は用紙上の mm です。図面の縮尺を入力してください（例: 1/100 なら 100）。' });
         if (!res) return;
         drawing = parseSfc(new TextDecoder('shift_jis').decode(buf), Number(res.scale) || 1);
+      } else if (name.endsWith('.jww')) {
+        drawing = parseJww(buf);
       } else {
         drawing = parseDxf(decodeDxf(buf));
       }

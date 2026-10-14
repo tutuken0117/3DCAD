@@ -106,7 +106,7 @@ export class UI {
         <div class="dropdown">
           <button class="primary">読み込み ▾</button>
           <div class="dropdown-menu">
-            <button data-act="import-sheet">図面（平面図・立面図・断面図）… <small>DXF / SXF / PDF / 画像</small></button>
+            <button data-act="import-sheet">図面（平面図・立面図・断面図）… <small>DXF / SXF / JWW / PDF / 画像</small></button>
             <button data-act="import-pc">点群（LAS / PLY / XYZ / CSV）…</button>
             <hr>
             <button data-act="sample-house">サンプル: 住宅（平面図＋立面図 → 立体）</button>
@@ -322,7 +322,7 @@ export class UI {
   pickFile(kind: 'open' | 'sheet' | 'pointcloud'): void {
     const accept = {
       open: '.json,.3dcad',
-      sheet: '.dxf,.sfc,.pdf,.png,.jpg,.jpeg,.webp',
+      sheet: '.dxf,.sfc,.jww,.pdf,.png,.jpg,.jpeg,.webp',
       pointcloud: '.las,.laz,.ply,.xyz,.txt,.csv,.pts,.asc',
     }[kind];
     this.fileInput.accept = accept;
@@ -1029,7 +1029,7 @@ export class UI {
       ${
         sm.items.length
           ? ''
-          : `<p class="muted">平面図は地面に、立面図・断面図は建物の横に立てて配置します。DXF / SXF の線にはスナップでき、
+          : `<p class="muted">平面図は地面に、立面図・断面図は建物の横に立てて配置します。DXF / SXF / JWW の線にはスナップでき、
              「図面から立体」ツール（K）で外形をクリックしていくと、重なった部分が立体になります。PDF・画像は下図としてなぞれます。</p>`
       }
       ${sm.items
@@ -1353,7 +1353,7 @@ export class UI {
       <p class="muted">日時を変えると、その日・その時刻の太陽の位置で影が付きます（モデルの位置の緯度経度で計算。日影の検討にも）。</p>
       <h3>平面図・立面図・断面図から 3D を作る</h3>
       <ol class="steps">
-        <li>「読み込み → 図面」で平面図を開く（DXF / SXF / PDF / 画像）。地面に水平に置かれます</li>
+        <li>「読み込み → 図面」で平面図を開く（DXF / SXF / JWW / PDF / 画像）。地面に水平に置かれます</li>
         <li>同じように立面図・断面図を開き、種類（南立面など）を選ぶ。建物の横に自動で立てて配置されます</li>
         <li>ずれていれば「図面」パネルの「位置合わせ」で通り芯や角を合わせ、「高さ合わせ」で GL を 0 に</li>
         <li><b>図面から立体（K）</b>: 平面図の外形 → 立面図の外形 の順にクリックして Enter。重なった部分が屋根付きの立体になります（東立面も加えると寄棟）</li>
