@@ -108,6 +108,14 @@ export class UI {
     this.root = root;
     root.classList.add('app');
     this.viewportEl = h('div', { class: 'viewport' });
+    // 拡大・縮小ボタン（携帯・タブレットや全画面表示のとき。立ち位置では前後に歩く）
+    const zb = h('div', { class: 'zoom-btns' });
+    zb.innerHTML = `<button data-z="in" title="拡大（立ち位置では前へ）" aria-label="拡大">＋</button><button data-z="out" title="縮小（立ち位置では後ろへ）" aria-label="縮小">－</button>`;
+    zb.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (b) this.app.zoomStep(b.dataset.z === 'in');
+    });
+    this.viewportEl.appendChild(zb);
   }
 
   // ------------------------------------------------------------------
@@ -609,7 +617,7 @@ export class UI {
       if (!this.fullviewBar) {
         const bar = h('div', { class: 'fullview-bar' });
         bar.innerHTML = `
-          <button data-fv="zoom" title="全体を表示">${ICONS.zoom}</button>
+          <button data-fv="zoom" title="全体を表示">${ICONS.fit}</button>
           <button data-fv="walk" title="立ち位置（床をタップしてそこに立つ）">${ICONS.walk}</button>
           <button data-fv="exit" class="fv-exit" title="全画面を終わる">✕ 戻る</button>`;
         bar.addEventListener('click', (e) => {
@@ -1685,7 +1693,7 @@ export class UI {
       </ol>
       <p class="muted">試すには「読み込み → サンプル: 住宅」。PDF・画像の図面は線を拾えないので、なぞって作図します。</p>
       <h3>タブレットでの操作</h3>
-      <p class="muted">1 本指でツール操作、2 本指でズーム・パン。視点を回すときは右下の「回転」。Esc・Enter の代わりに「取消」「確定」ボタン。数値は右下の入力欄をタップして入力。メニューの ☰ でパネルを開きます。</p>
+      <p class="muted">1 本指でツール操作、2 本指のピンチで拡大・縮小（立ち位置では前後に歩く）とパン。右下の「＋」「－」ボタンでも拡大・縮小できます。視点を回すときは右下の「回転」。Esc・Enter の代わりに「取消」「確定」ボタン。数値は右下の入力欄をタップして入力。メニューの ☰ でパネルを開きます。</p>
       <h3>基本操作（SketchUp と同じ）</h3>
       <table class="keys">
         <tr><td>中ボタンドラッグ</td><td>視点の回転</td></tr>

@@ -272,6 +272,21 @@ export class Viewport {
     return (2 * dist * Math.tan((this.perspCamera.fov * Math.PI) / 360)) / h;
   }
 
+  /** 拡大（f < 1）・縮小（f > 1）。注視点に近づく・離れる */
+  zoomBy(f: number): void {
+    if (this.isOrtho) {
+      this.orthoCamera.zoom = Math.max(0.01, this.orthoCamera.zoom / f);
+      this.updateOrthoFrustum();
+    } else {
+      const t = this.controls.target;
+      const off = this.camera.position.clone().sub(t).multiplyScalar(f);
+      if (off.length() < 0.05) return;
+      this.camera.position.copy(t).add(off);
+    }
+    this.controls.update();
+    this.requestRender();
+  }
+
   /** 範囲全体が見えるようにカメラを合わせる */
   zoomToBox(box: Box3): void {
     if (box.isEmpty()) return;

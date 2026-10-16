@@ -34,6 +34,9 @@ export type FaceStyle = 'shaded' | 'layer' | 'xray' | 'wireframe';
 export class ModelRenderer {
   private front: Mesh;
   private back: Mesh;
+  private backMat: MeshLambertMaterial;
+  /** 透明な材料（ガラスなど）の裏面は塗らない（塗ると裏から見て不透明になる） */
+  private noBackMat = new MeshBasicMaterial({ visible: false });
   private edges: LineSegments;
   private fadedEdges: LineSegments;
   private selFaces: Mesh;
@@ -67,13 +70,13 @@ export class ModelRenderer {
     this.baseMatDouble = std({ vertexColors: true, side: DoubleSide });
     this.whiteMat = std({ color: '#eceae6', side: DoubleSide, roughness: 0.95 });
     const frontMat = this.baseMat;
-    const backMat = new MeshLambertMaterial({
+    const backMat = (this.backMat = new MeshLambertMaterial({
       color: BACK_COLOR,
       side: BackSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
-    });
+    }));
     this.front = new Mesh(new BufferGeometry(), frontMat);
     this.back = new Mesh(new BufferGeometry(), backMat);
     this.edges = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 0x1a1a1a }));
@@ -110,7 +113,7 @@ export class ModelRenderer {
   setFaceStyle(style: FaceStyle): void {
     this.faceStyle = style;
     const fm = this.baseMat;
-    const bm = this.back.material as MeshLambertMaterial;
+    const bm = this.backMat;
     const xray = style === 'xray';
     for (const m of [fm, this.baseMatDouble, bm]) {
       m.transparent = xray;
@@ -168,6 +171,7 @@ export class ModelRenderer {
     this.triFace = [];
     const g = new BufferGeometry();
     const materials: Material[] = [];
+    const backMaterials: Material[] = [];
     let start = 0;
     for (const [key, b] of buckets) {
       pos.set(b.pos, start * 3);
@@ -182,6 +186,8 @@ export class ModelRenderer {
       const count = b.pos.length / 3;
       g.addGroup(start, count, materials.length);
       materials.push(mat);
+      const see = key && key !== 'white' && getMaterial(key)?.opacity !== undefined;
+      backMaterials.push(see ? this.noBackMat : this.backMat);
       start += count;
     }
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -193,6 +199,7 @@ export class ModelRenderer {
     this.front.geometry = g;
     this.front.material = materials.length ? materials : this.baseMat;
     this.back.geometry = g;
+    this.back.material = backMaterials.length ? backMaterials : this.backMat;
     this.back.visible = !this.presentation && this.faceStyle !== 'wireframe';
     this.front.castShadow = this.front.receiveShadow = this.presentation;
     this.edges.visible = !this.presentation || this.showEdges;

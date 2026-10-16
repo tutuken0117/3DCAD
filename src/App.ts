@@ -470,6 +470,12 @@ export class App {
     this.ui.toast(`${n} 個の面を押し出しました`);
   }
 
+  /** ＋（拡大）・－（縮小）ボタン。立ち位置のときは前後に歩く */
+  zoomStep(zoomIn: boolean): void {
+    if (this.tool instanceof WalkTool) this.tool.step(zoomIn ? 1 : -1);
+    else this.viewport.zoomBy(zoomIn ? 0.75 : 1 / 0.75);
+  }
+
   zoomExtents(): void {
     const box = this.model.boundingBox();
     for (const b of this.pointClouds.boundingBoxes()) box.union(b);

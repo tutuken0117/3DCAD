@@ -1186,3 +1186,41 @@ select {
   background: transparent;
   border-color: rgba(255, 255, 255, 0.35);
 }
+
+/* 拡大・縮小ボタン（タッチ操作の端末と、モデルだけ表示のときに出す） */
+.zoom-btns {
+  position: absolute;
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+}
+.model-only .zoom-btns {
+  display: flex;
+}
+@media (pointer: coarse) {
+  .zoom-btns {
+    display: flex;
+  }
+}
+.zoom-btns button {
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(32, 48, 63, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 22px;
+  backdrop-filter: blur(4px);
+  touch-action: manipulation;
+}
+/* タッチ端末でホバーの色が残らないように */
+.zoom-btns button:hover:not(:disabled),
+.zoom-btns button:active,
+.fullview-bar button:hover:not(:disabled):not(.on) {
+  background: rgba(32, 48, 63, 0.82);
+  color: #fff;
+}

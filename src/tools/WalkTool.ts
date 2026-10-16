@@ -20,6 +20,31 @@ export class WalkTool extends Tool {
   private yaw = 0;
   private pitch = 0;
   private wheelHandler = (e: WheelEvent) => this.onWheel(e);
+  /** 2 本指のピンチで前後に歩く（指の位置はタッチごとに覚える） */
+  private touches = new Map<number, { x: number; y: number }>();
+  private pinchDist = 0;
+  private touchDown = (e: PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.touches.size === 2) {
+      this.down = null; // 見回し・立つ を取りやめ
+      this.pinchDist = this.touchSpan();
+    }
+  };
+  private touchMove = (e: PointerEvent) => {
+    if (!this.touches.has(e.pointerId)) return;
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.touches.size < 2) return;
+    const d = this.touchSpan();
+    const delta = d - this.pinchDist;
+    if (Math.abs(delta) < 6) return;
+    this.pinchDist = d;
+    this.step(delta * 0.02);
+  };
+  private touchUp = (e: PointerEvent) => {
+    if (!this.touches.delete(e.pointerId)) return;
+    if (this.touches.size > 0) this.down = null;
+  };
   private prevFov = 45;
 
   hint(): string {
@@ -31,6 +56,11 @@ export class WalkTool extends Tool {
     const vp = this.app.viewport;
     vp.controls.enabled = false;
     vp.renderer.domElement.addEventListener('wheel', this.wheelHandler, { passive: false });
+    const el = vp.renderer.domElement;
+    el.addEventListener('pointerdown', this.touchDown, true);
+    el.addEventListener('pointermove', this.touchMove, true);
+    el.addEventListener('pointerup', this.touchUp, true);
+    el.addEventListener('pointercancel', this.touchUp, true);
     if (vp.camera === vp.perspCamera) {
       this.prevFov = vp.perspCamera.fov;
       vp.perspCamera.fov = WalkTool.FOV;
@@ -45,6 +75,12 @@ export class WalkTool extends Tool {
     const vp = this.app.viewport;
     vp.controls.enabled = true;
     vp.renderer.domElement.removeEventListener('wheel', this.wheelHandler);
+    const el = vp.renderer.domElement;
+    el.removeEventListener('pointerdown', this.touchDown, true);
+    el.removeEventListener('pointermove', this.touchMove, true);
+    el.removeEventListener('pointerup', this.touchUp, true);
+    el.removeEventListener('pointercancel', this.touchUp, true);
+    this.touches.clear();
     vp.perspCamera.fov = this.prevFov;
     vp.perspCamera.updateProjectionMatrix();
     vp.controls.update();
@@ -106,11 +142,13 @@ export class WalkTool extends Tool {
 
   onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (this.touches.size > 1) return;
     this.readAngles();
     this.down = { x: e.clientX, y: e.clientY, yaw: this.yaw, pitch: this.pitch, moved: false };
   }
 
   onPointerMove(e: PointerEvent): void {
+    if (this.touches.size > 1) return;
     if (!this.down || (e.buttons === 0 && e.pointerType === 'mouse')) {
       this.down = null;
       return;
@@ -128,6 +166,10 @@ export class WalkTool extends Tool {
 
   onPointerUp(e: PointerEvent): void {
     const d = this.down;
+    if (this.touches.size > 0) {
+      this.down = null;
+      return;
+    }
     this.down = null;
     if (!d || d.moved) return;
     // クリック: そこに立つ
@@ -147,6 +189,17 @@ export class WalkTool extends Tool {
     this.pitch = Math.max(-0.3, Math.min(0.3, this.pitch));
     this.apply(p);
     this.updateStatus();
+  }
+
+  private touchSpan(): number {
+    const [a, b] = [...this.touches.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  /** 前（+）・後ろ（-）に歩く（＋－ボタン・ピンチ） */
+  step(m: number): void {
+    this.readAngles();
+    this.walk(this.dir(), m);
   }
 
   private onWheel(e: WheelEvent): void {
