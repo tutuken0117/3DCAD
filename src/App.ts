@@ -492,6 +492,9 @@ export class App {
     const name = file.name.toLowerCase();
     try {
       if (name.endsWith('.json') || name.endsWith('.3dcad')) return await this.openProject(file, handle);
+      // 拡張子が変わっていても（携帯で .3dcad.txt になった・拡張子なしなど）、中身が 3DCAD のプロジェクトなら開く
+      const head = await file.slice(0, 200).text();
+      if (/^\s*\{/.test(head) && /"app"\s*:\s*"3DCAD"/.test(head)) return await this.openProject(file, handle);
       if (name.endsWith('.dxf') || name.endsWith('.sfc') || name.endsWith('.jww') || name.endsWith('.pdf') || /\.(png|jpe?g|webp|gif|bmp)$/.test(name)) {
         return await this.importSheetFile(file);
       }

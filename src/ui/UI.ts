@@ -402,7 +402,10 @@ export class UI {
       sheet: '.dxf,.sfc,.jww,.pdf,.png,.jpg,.jpeg,.webp',
       pointcloud: '.las,.laz,.ply,.xyz,.txt,.csv,.pts,.asc',
     }[kind];
-    this.fileInput.accept = accept;
+    // 携帯・タブレットは .3dcad・.jww などの拡張子を知らず、絞り込むとファイルが灰色で選べなくなる
+    // （OneDrive・iCloud・Google ドライブの中のファイルも同じ）。タッチ端末では絞り込まない
+    const touch = window.matchMedia?.('(pointer: coarse)').matches;
+    this.fileInput.accept = touch ? '' : accept;
     this.fileInput.click();
   }
 
@@ -1658,6 +1661,7 @@ export class UI {
         <li><b>Android</b>: Chrome で開き、右上の「︙」→「アプリをインストール」（または「ホーム画面に追加」）</li>
       </ul>
       <p class="muted">ホーム画面の 3DCAD アイコンから、アドレスバーのない全画面で起動します。上の操作は「メニュー」、パネルは ☰ から。</p>
+      <p class="muted"><b>携帯でファイルを開く</b>: 「開く ▾」→「ファイルを開く」で、iPhone は「ファイル」、Android はファイル選択の画面が出ます。OneDrive・iCloud Drive・Google ドライブの中の .3dcad も、そこから選べます（「ブラウズ」や「≡」から各サービスを選ぶ）。名前が .3dcad.txt などに変わっていても開けます。</p>
       <div class="row"><button data-install-help class="primary">アプリにする</button></div>`
       }
       <h3>1 ファイル版（すぐ開ける・オフライン）</h3>
