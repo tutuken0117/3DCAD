@@ -7,6 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const [out, project, title] = process.argv.slice(2);
 const dir = 'dist-single';
@@ -50,7 +51,10 @@ const shim = `<script>
 let auto = '';
 if (project) {
   const text = fs.readFileSync(project, 'utf8');
-  auto = `<script>window.__AUTO_OPEN = { name: ${JSON.stringify(path.basename(project))}, text: ${JSON.stringify(text).replace(/<\/script/gi, '<\\/script')} };</script>`;
+  // 大きいプロジェクト（数 MB 以上）は gzip して埋め込む（開くときにブラウザで展開）
+  const big = text.length > 4 * 1024 * 1024;
+  const payload = big ? `gz: ${JSON.stringify(zlib.gzipSync(text, { level: 9 }).toString('base64'))}` : `text: ${JSON.stringify(text).replace(/<\/script/gi, '<\\/script')}`;
+  auto = `<script>window.__AUTO_OPEN = { name: ${JSON.stringify(path.basename(project))}, ${payload} };</script>`;
 }
 if (title) html = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
 const app = `<script type="module">${mainJs.replace(/<\/script/gi, '<\\/script')}</script>`;

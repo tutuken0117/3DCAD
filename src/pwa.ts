@@ -70,9 +70,18 @@ export async function promptInstall(app: App): Promise<void> {
  */
 export function handleLaunch(app: App): Promise<boolean> {
   // 1 ファイル版に埋め込んだプロジェクト（開くとすぐ表示）
-  const embedded = (window as unknown as { __AUTO_OPEN?: { name: string; text: string } }).__AUTO_OPEN;
+  const embedded = (window as unknown as { __AUTO_OPEN?: { name: string; text?: string; gz?: string } }).__AUTO_OPEN;
   if (embedded) {
-    void app.openAnyFile(new File([embedded.text], embedded.name));
+    void (async () => {
+      let text = embedded.text ?? '';
+      if (embedded.gz) {
+        // gzip して埋め込んだ大きいプロジェクト
+        const bin = Uint8Array.from(atob(embedded.gz), (c) => c.charCodeAt(0));
+        const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
+        text = await new Response(stream).text();
+      }
+      await app.openAnyFile(new File([text], embedded.name));
+    })();
     return Promise.resolve(true);
   }
   const q = new URLSearchParams(location.search);
