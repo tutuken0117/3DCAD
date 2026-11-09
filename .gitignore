@@ -4,3 +4,4 @@ dist/
 .DS_Store
 dist-single/
 /3DCAD.html
+.build-tmp.mjs
