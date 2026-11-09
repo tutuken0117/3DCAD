@@ -226,12 +226,21 @@ export class Model {
       return v;
     };
     let count = 0;
+    // 同じ点に寄った頂点が続くと長さ 0 の辺になるので、続けて同じ頂点は 1 つにする
+    const dedupe = (loop: number[]) => loop.filter((v, i) => v !== loop[(i + loop.length - 1) % loop.length]);
+    const tryFace = (outer: number[], holes: number[][] | undefined, c: string | undefined) => {
+      try {
+        return this.addFaceFromVertices(outer, layer, c, holes);
+      } catch {
+        return undefined;
+      }
+    };
     for (const f of faces) {
-      const outer = f.outer.map(vid);
-      const holes = f.holes.map((h) => h.map(vid));
+      const outer = dedupe(f.outer.map(vid));
+      const holes = f.holes.map((h) => dedupe(h.map(vid)));
       // 重なった頂点で潰れたループは除く
       if (new Set(outer).size < 3) continue;
-      if (this.addFaceFromVertices(outer, layer, f.color ?? color, holes.filter((h) => new Set(h).size >= 3)) !== undefined) {
+      if (tryFace(outer, holes.filter((h) => new Set(h).size >= 3), f.color ?? color) !== undefined) {
         count++;
         continue;
       }
@@ -241,7 +250,7 @@ export class Model {
         if (new Set(tri).size < 3) continue;
         const [a, b, c] = tri.map((v) => this.pos(v));
         if (new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, a)).lengthSq() < 1e-14) continue;
-        if (this.addFaceFromVertices(tri, layer, f.color ?? color) !== undefined) count++;
+        if (tryFace(tri, undefined, f.color ?? color) !== undefined) count++;
       }
     }
     if (!count) {
