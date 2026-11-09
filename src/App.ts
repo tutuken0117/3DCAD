@@ -555,7 +555,7 @@ export class App {
 
   async loadProjectFile(p: ProjectFile): Promise<void> {
     this.tool.reset();
-    this.geo.load(p.geo);
+    this.geo.load(p.geo ?? {});
     loadMaterialSettings(p.materials ?? readMaterialDefaults());
     this.model.load(p.model);
     await this.sheets.load([...(p.sheets ?? []), ...(p.underlays ?? []).map(sheetFromLegacyUnderlay)]);
