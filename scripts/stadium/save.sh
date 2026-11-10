@@ -5,7 +5,7 @@
 set -e
 S="$1"; OUT="$2"
 R="$(cd "$(dirname "$0")/../.." && pwd)"
-sed "s#'/home/user/3DCAD/src/#'../../src/#g" "$S/stadium2/build3.ts" > "$R/scripts/stadium/build.ts"
+# 組み立て本体（build.ts）はリポジトリの方を直接直すので、ここでは写さない
 cp "$S/stadium2/prep.py" "$S/stadium2/run_all.sh" "$R/scripts/stadium/"
 cp "$S/stadium2/local.json" "$S/stadium2/inside_local.json" "$R/scripts/stadium/data/"
 cp "$S/e2e/stadium3.mjs" "$S/e2e/single.mjs" "$S/e2e/peekcam2.mjs" "$R/scripts/stadium/render/"

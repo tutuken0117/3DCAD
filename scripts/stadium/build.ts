@@ -166,9 +166,32 @@ const main = async () => {
   const at = (dir: [number, number], r: number): [number, number] => [home[0] + dir[0] * r, home[1] + dir[1] * r];
   const d1 = rot(cf, -45); // 一塁線（右）
   const d3 = rot(cf, 45); // 三塁線（左）
-  const base = (p: [number, number], s = 0.38) => Manifold.cube([s, s, 0.08], true).rotate([0, 0, (Math.atan2(cf[1], cf[0]) * 180) / Math.PI + 45]).translate([p[0], p[1], 0.04]);
+  // ベース: 38.1cm 角・厚さ 5cm。一塁・三塁はフェア地域の内側に置き（角が塁線上）、二塁は中心を塁の位置に
   const B = 27.43;
-  add(Manifold.union([base(at(d1, B)), base(at(cf, B * Math.SQRT2)), base(at(d3, B)), base(home, 0.43)]), 'ベース・ホームプレート', 'グラウンド', 'white');
+  const angD1 = (Math.atan2(d1[1], d1[0]) * 180) / Math.PI;
+  const bag = (c: [number, number]) => Manifold.cube([0.381, 0.381, 0.05], true).rotate([0, 0, angD1]).translate([c[0], c[1], 0.025]);
+  const p1 = at(d1, B);
+  const p3 = at(d3, B);
+  const p2 = at(cf, B * Math.SQRT2);
+  const h = 0.1905;
+  const bags = Manifold.union([
+    bag([p1[0] - d1[0] * h + d3[0] * h, p1[1] - d1[1] * h + d3[1] * h]),
+    bag(p2),
+    bag([p3[0] - d3[0] * h + d1[0] * h, p3[1] - d3[1] * h + d1[1] * h]),
+  ]);
+  // ホームプレート: 五角形（幅 43.2cm・奥行き 43.2cm、とがった角が捕手側）
+  const ux = cf;
+  const uy: [number, number] = [-cf[1], cf[0]];
+  const hp: [number, number][] = [[0, 0], [0.216, 0.216], [0.432, 0.216], [0.432, -0.216], [0.216, -0.216]].map(([a, b2]) => [home[0] + ux[0] * a + uy[0] * b2, home[1] + ux[1] * a + uy[1] * b2] as [number, number]);
+  const plate = new CrossSection([ccw(hp)], 'Positive').extrude(0.02);
+  // 投手板の前から本塁までの白線（バッターボックス 1.83m×1.22m、本塁から 15.2cm 離す）
+  const boxL = (side: number) => {
+    const o = side * (0.216 + 0.152 + 0.61);
+    const pts: [number, number][] = [[-0.915 + 0.216, o - 0.61], [0.915 + 0.216, o - 0.61], [0.915 + 0.216, o + 0.61], [-0.915 + 0.216, o + 0.61]].map(([a, b2]) => [home[0] + ux[0] * a + uy[0] * b2, home[1] + ux[1] * a + uy[1] * b2] as [number, number]);
+    const outer = new CrossSection([ccw(pts)], 'Positive');
+    return outer.subtract(outer.offset(-0.075, 'Square')).extrude(0.01);
+  };
+  add(Manifold.union([bags, plate, boxL(1), boxL(-1)]), 'ベース・ホームプレート・バッターボックス', 'グラウンド', 'white');
   const lineTo = (dir: [number, number], len: number) => {
     const L2 = len;
     const ang = (Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
@@ -242,7 +265,8 @@ const main = async () => {
     const D = L / n;
     const tsol: Mf[] = [];
     // グラウンドに面した 1 階スタンドは、前面を濃い緑のフェンスにする（地図データの壁の色 #3a5b56）
-    const hasFence = mode === 'seats' && s.z0 < 1 && s.it.tags['building:colour'] === '#3a5b56';
+    const outfieldStand = Math.abs(((s.az - azOf(at(cf, 50)) + 540) % 360) - 180) < 47 && s.dist > 85;
+    const hasFence = mode === 'seats' && s.z0 < 1 && s.it.tags['building:colour'] === '#3a5b56' && !outfieldStand;
     if (hasFence) {
       const fb = s.c.intersect(band(d, s0 + L - 0.3, s0 + L + 1));
       if (!fb.isEmpty()) frontFences.push(ext(fb, s.z0, s.h - s.rh + 0.45));
@@ -424,7 +448,7 @@ const main = async () => {
       for (const [dl2, sgn] of [[d1, 1], [d3, -1]] as [[number, number], number][]) {
         // 線から外側へ進んで席の前に当たる所
         const out2 = rot(dl2, sgn * -90);
-        const base0 = at(dl2, 34);
+        const base0 = at(dl2, 21);
         let t = 3;
         while (t < 40 && !inFront([base0[0] + out2[0] * t, base0[1] + out2[1] * t])) t += 0.25;
         if (t >= 40) { console.log('dugout not found', sgn); continue; }
@@ -444,7 +468,7 @@ const main = async () => {
         dugSolids.push(ext(R(LEN, 0.3, 0, DEP / 2 - 0.15), FL, 1.1)); // 奥の壁
         dugSolids.push(ext(R(0.3, DEP, -LEN / 2 + 0.15, 0), FL, 1.1), ext(R(0.3, DEP, LEN / 2 - 0.15, 0), FL, 1.1)); // 両端の壁
         dugSolids.push(ext(R(LEN - 0.6, 0.2, 0, -DEP / 2 + 0.1), FL, 0.0)); // 前（グラウンドの高さまで）
-        dugRoof.push(ext(R(LEN + 0.4, DEP * 0.75, 0, DEP * 0.125), 1.0, 1.2)); // 屋根（グラウンド側を少し残す）
+        dugRoof.push(ext(R(LEN + 0.4, DEP * 0.8, 0, DEP * 0.1), 0.75, 0.95)); // 屋根（低く、上は最前列の観客の足元）
         dugRail.push(ext(R(LEN - 0.6, 0.06, 0, -DEP / 2 + 0.1), 0.85, 0.95)); // 手すり
         for (let k = -4; k <= 4; k++) dugRail.push(ext(R(0.06, 0.06, k * 2, -DEP / 2 + 0.1), 0.0, 0.9));
         dugBench.push(ext(R(LEN - 2.4, 0.45, 0, DEP / 2 - 0.55), FL, FL + 0.45)); // 長いベンチ
@@ -568,7 +592,16 @@ const main = async () => {
       const fenceR = offPitch(F0).subtract(offPitch(WT)).intersect(LFW);
       const fenceSK = fenceR.intersect(SKW);
       const fenceN = fenceR.subtract(SKW);
-      add(Manifold.union([ext(fenceN, -0.1, HR), ext(fenceSK, -1.3, 0.25), ext(fenceSK, 1.8, HR)]), 'レフトのフェンス（ラバー）', 'スタンド', '#3a5b56');
+      // 外野は 1 本の連続したフェンス（写真）。芝のふちから 4.1m・高さ 3.6m（黄色のホームランライン）
+      const OF = fan(-45.6, A_POLE).intersect(farOnly.add(CrossSection.circle(400, 8).translate(home).subtract(CrossSection.circle(80, 96).translate(home))));
+      const fenceAll = offPitch(F0).subtract(offPitch(WT)).intersect(OF).subtract(SKW);
+      // フェンスの後ろとスタンドの前のすき間（スタンドの前のふちが芝から 4.5〜6m と場所で違う）は、フェンスと同じ高さの壁でふさぐ
+      const lowParts = partItems.filter((i) => (num(i.tags.min_height) ?? 0) < 1 && !i.tags['tower:type']).map((i) => shape(i)).filter((x2): x2 is Cs => !!x2);
+      const standsU = lowParts.length ? CrossSection.union(lowParts) : fenceAll.subtract(fenceAll);
+      const gap = offPitch(F0 + 2.2).subtract(offPitch(F0)).intersect(OF).subtract(SKW).subtract(LFW).subtract(standsU);
+      add(Manifold.union([ext(fenceAll.subtract(LFW).add(fenceN), -0.1, HR), ext(fenceSK, -1.3, 0.25), ext(fenceSK, 1.8, HR)]), '外野フェンス（ラバー・連続）', 'スタンド', '#3a5b56');
+      if (!gap.isEmpty()) add(ext(gap, -0.1, HR - 0.05), 'フェンスの裏（スタンドとのすき間）', 'スタンド', (n) => (n.z > 0.5 ? 'concrete' : '#3a5b56'));
+      add(ext(fenceAll.subtract(LFW), HR, HR + 0.08), 'ホームランライン（黄色）', 'スタンド', 'paint-yellow');
       add(ext(fenceR, HR, HR + 0.08), 'ホームランライン（黄色・3.6m）', 'スタンド', 'paint-yellow');
       {
         const c0 = rot(cf, A_END - 0.3);
@@ -753,25 +786,48 @@ const main = async () => {
   // 照明塔の柱（照明の箱の下・高さ 39.5m まで）
   for (const it of partItems.filter((i) => i.tags['tower:type'] === 'lighting')) {
     const [x, y] = centroid(it);
-    // 鉄骨を組んだ塔（参考写真）: 4 本の柱＋6m ごとの横材＋斜材。照明の板の方（グラウンド向き）に合わせて回す
+    // 写真の形: 照明の板を 2 本の太い脚（下ほど開く）で支え、後ろから 1 本の支柱で突っ張る
     const H0 = num(it.tags.min_height) ?? 39.5;
-    const rotT = (Math.atan2(FC[1] - y, FC[0] - x) * 180) / Math.PI;
-    const tw: Mf[] = [];
-    const hw = 2.2;
-    const hd = 1.4;
-    for (const [lx, ly] of [[-hd, -hw], [-hd, hw], [hd, -hw], [hd, hw]]) tw.push(Manifold.cube([0.45, 0.45, H0], true).translate([lx, ly, H0 / 2]));
-    for (let z = 6; z < H0; z += 6) {
-      tw.push(Manifold.cube([2 * hd + 0.45, 0.25, 0.25], true).translate([0, -hw, z]), Manifold.cube([2 * hd + 0.45, 0.25, 0.25], true).translate([0, hw, z]));
-      tw.push(Manifold.cube([0.25, 2 * hw + 0.45, 0.25], true).translate([-hd, 0, z]), Manifold.cube([0.25, 2 * hw + 0.45, 0.25], true).translate([hd, 0, z]));
-      // 斜材（グラウンド側と裏側の面）
-      const dl = Math.hypot(2 * hw, 6);
-      const ang = (Math.atan2(6, 2 * hw) * 180) / Math.PI;
-      for (const lx of [-hd, hd]) tw.push(Manifold.cube([0.18, dl, 0.18], true).rotate([ang * (Math.round(z / 6) % 2 ? 1 : -1), 0, 0]).translate([lx, 0, z - 3]));
+    const ring = it.outer![0];
+    let ax = 1;
+    let ay = 0;
+    let best = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const [x0, y0] = ring[i];
+      const [x1, y1] = ring[(i + 1) % ring.length];
+      const L = Math.hypot(x1 - x0, y1 - y0);
+      if (L > best) {
+        best = L;
+        ax = (x1 - x0) / L;
+        ay = (y1 - y0) / L;
+      }
     }
-    // 照明の板の裏の枠
-    const hT = num(it.tags.height) ?? 50.5;
-    tw.push(Manifold.cube([0.3, 2 * hw + 6, 0.3], true).translate([hd, 0, H0 + 0.2]), Manifold.cube([0.3, 2 * hw + 6, 0.3], true).translate([hd, 0, hT - 0.2]));
-    push('照明塔（鉄骨）', '照明塔', 'steel-gray', Manifold.union(tw).rotate([0, 0, rotT]).translate([x, y, 0]));
+    // 板の向き（板に直交してグラウンドから離れる方）
+    let bx = -ay;
+    let by = ax;
+    if (bx * (FC[0] - x) + by * (FC[1] - y) > 0) {
+      bx = -bx;
+      by = -by;
+    }
+    const half = Math.max(2.5, best / 2 - 1.5);
+    const P3 = (s2: number, back: number, z: number): [number, number, number] => [x + ax * s2 + bx * back, y + ay * s2 + by * back, z];
+    const leg = (top: [number, number, number], bot: [number, number, number], rt: number, rb: number) =>
+      Manifold.hull([
+        [top[0] - rt, top[1] - rt, top[2]], [top[0] + rt, top[1] - rt, top[2]], [top[0] - rt, top[1] + rt, top[2]], [top[0] + rt, top[1] + rt, top[2]],
+        [bot[0] - rb, bot[1] - rb, bot[2]], [bot[0] + rb, bot[1] - rb, bot[2]], [bot[0] - rb, bot[1] + rb, bot[2]], [bot[0] + rb, bot[1] + rb, bot[2]],
+      ]);
+    const tw: Mf[] = [];
+    for (const sg of [-1, 1]) tw.push(leg(P3(sg * half, 0.6, H0 + 0.5), P3(sg * (half + 3.0), 1.5, 0), 0.45, 0.8));
+    tw.push(leg(P3(0, 1.0, H0 * 0.62), P3(0, 13, 0), 0.35, 0.6)); // 後ろの支柱
+    tw.push(leg(P3(-half - 1.4, 1.1, H0 * 0.6), P3(half + 1.4, 1.1, H0 * 0.6), 0.35, 0.35)); // 横はり
+    tw.push(leg(P3(-half - 0.3, 0.7, H0 + 0.3), P3(half + 0.3, 0.7, H0 + 0.3), 0.3, 0.3)); // 板を受けるはり
+    for (let z = 8; z < H0 - 2; z += 8) {
+      // 脚に付いた点検はしご（片側の脚の外側）
+      const r = z / H0;
+      const sx = -(half + 3.0 * (1 - r)) - 0.9;
+      tw.push(leg(P3(sx, 1.5 - 0.9 * r, z + 0.05), P3(sx, 1.5 - 0.9 * r, z - 8 + 0.05), 0.08, 0.08));
+    }
+    push('照明塔（鉄骨）', '照明塔', 'steel-white', Manifold.union(tw));
   }
   for (const [key, g] of groups) {
     const name = key.startsWith('屋根') ? '屋根・ひさし' : key.startsWith('建物') ? 'スタンド・コンコース' : key;
