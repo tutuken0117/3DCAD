@@ -102,7 +102,11 @@ export class Viewport {
    *  default: 左=ツール, 中=オービット(Shift+中=パン), 右=パン
    *  orbit / pan: 左ドラッグ・1 本指でも視点操作（トラックパッド・タブレット用）
    */
+  /** 今のマウス・指の割り当て（default 以外は、左ドラッグ・1 本指が視点操作） */
+  navMode: 'default' | 'orbit' | 'pan' = 'default';
+
   setNavigationMode(mode: 'default' | 'orbit' | 'pan'): void {
+    this.navMode = mode;
     const left = mode === 'orbit' ? MOUSE.ROTATE : mode === 'pan' ? MOUSE.PAN : (null as unknown as MOUSE);
     this.controls.mouseButtons = { LEFT: left, MIDDLE: MOUSE.ROTATE, RIGHT: MOUSE.PAN };
     // タッチ: 1 本指はツール操作（オービット/パンツールのときは視点操作）、2 本指でズーム・パン

@@ -8,6 +8,11 @@ export class SelectTool extends Tool {
   private box: HTMLDivElement;
   private clicks = 0;
   private lastClick = 0;
+  /** 画面に触れている指（ピンチ・2 本指の移動を選択と取り違えないため） */
+  private touches = new Set<number>();
+  private gesture = false;
+  /** 視点操作中の 1 回目のタップで触れた図形（同じ図形をもう一度タップすると選択） */
+  private lastTapKey = '';
 
   constructor(app: ConstructorParameters<typeof Tool>[0]) {
     super(app);
@@ -16,7 +21,13 @@ export class SelectTool extends Tool {
     this.app.viewport.container.appendChild(this.box);
   }
 
+  /** 視点を動かす操作（オービット・移動・拡大縮小）が左ドラッグ・1 本指に割り当てられているか */
+  private viewing(): boolean {
+    return this.app.viewport.navMode !== 'default';
+  }
+
   hint(): string {
+    if (this.viewing()) return 'ドラッグで視点を回転・ホイール／ピンチで拡大縮小。図形を選ぶときは、同じ図形を 2 回タップ（ダブルクリック）';
     return this.app.model.activeGroup
       ? 'グループを編集中。外側をクリックするか Esc で編集を終了します'
       : 'クリックで選択（Shift で追加/解除）。ダブルクリックで面と境界（グループなら中を編集）、トリプルクリックでつながった全体。ドラッグで範囲選択。Ctrl+G でグループ化';
@@ -24,11 +35,21 @@ export class SelectTool extends Tool {
 
   reset(): void {
     this.down = null;
+    this.gesture = false;
+    this.touches.clear();
+    this.lastTapKey = '';
     this.box.style.display = 'none';
     super.reset();
   }
 
   onPointerMove(e: PointerEvent): void {
+    // 視点操作中・2 本指の操作中は、範囲選択も強調表示もしない
+    if (this.gesture || this.viewing()) {
+      this.box.style.display = 'none';
+      if (e.pointerType !== 'mouse' || e.buttons) return;
+      this.app.renderer.setHover([], []);
+      return;
+    }
     if (this.down && e.buttons & 1) {
       const p = this.app.viewport.toCanvas(e.clientX, e.clientY);
       const d = this.down;
@@ -53,23 +74,63 @@ export class SelectTool extends Tool {
 
   onPointerDown(e: PointerEvent): void {
     if (e.button !== 0) return;
+    if (e.pointerType === 'touch') {
+      if (e.isPrimary) this.touches.clear();
+      this.touches.add(e.pointerId);
+      if (this.touches.size > 1) {
+        // 2 本目の指: ピンチ・移動なので選択はしない
+        this.gesture = true;
+        this.down = null;
+        this.box.style.display = 'none';
+        return;
+      }
+      this.gesture = false;
+    }
     this.down = this.app.viewport.toCanvas(e.clientX, e.clientY);
   }
 
   onPointerUp(e: PointerEvent): void {
+    if (e.pointerType === 'touch') {
+      this.touches.delete(e.pointerId);
+      if (this.gesture) {
+        if (!this.touches.size) this.gesture = false;
+        this.down = null;
+        return;
+      }
+    }
     if (!this.down || e.button !== 0) return;
     const p = this.app.viewport.toCanvas(e.clientX, e.clientY);
     const start = this.down;
     this.down = null;
     this.box.style.display = 'none';
+    if (this.viewing()) {
+      // 視点操作中: ドラッグは視点の操作。同じ図形を続けて 2 回タップしたときだけ選ぶ
+      if (p.distanceTo(start) > 6) return;
+      const key = this.pickKey(e);
+      // 描画が重いと処理が遅れるので、指を離した時刻（イベントの時刻）で比べる
+      const t = e.timeStamp;
+      const second = key !== '' && key === this.lastTapKey && t - this.lastClick < 700;
+      this.lastTapKey = second ? '' : key;
+      this.lastClick = t;
+      if (second) this.clickSelect(e, 1);
+      return;
+    }
     if (p.distanceTo(start) > 4) {
       this.boxSelect(start, p, e.shiftKey);
       return;
     }
-    const now = performance.now();
+    const now = e.timeStamp;
     this.clicks = now - this.lastClick < 350 ? this.clicks + 1 : 1;
     this.lastClick = now;
     this.clickSelect(e, this.clicks);
+  }
+
+  /** タップした図形を表すキー（何も無ければ空文字） */
+  private pickKey(e: PointerEvent): string {
+    const ent = pickEntity(this.app, this.app.inference.infer(e.clientX, e.clientY));
+    const sel = this.app.expandPick(ent);
+    if (!sel.edges.length && !sel.faces.length) return '';
+    return sel.group !== this.app.model.activeGroup ? `g${sel.group}` : `f${ent.face ?? ''}e${ent.edge ?? ''}`;
   }
 
   private clickSelect(e: PointerEvent, clicks: number): void {
