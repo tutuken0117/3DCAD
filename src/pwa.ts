@@ -85,6 +85,11 @@ export function handleLaunch(app: App): Promise<boolean> {
     return Promise.resolve(true);
   }
   const q = new URLSearchParams(location.search);
+  const model = q.get('model');
+  if (model) {
+    void app.openSampleModel(model);
+    return Promise.resolve(true);
+  }
   if (q.get('sample') === 'house') {
     void app.loadHouseSample();
     return Promise.resolve(true);

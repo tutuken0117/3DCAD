@@ -684,6 +684,27 @@ export class App {
   }
 
   /**
+   * 見本のモデル（samples/models/<名前>.3dcadz・中身は gzip した .3dcad）を開く。大きいので gzip で置き、開くときに展開する。
+   * URL に ?model=<名前> を付けると、起動してすぐ開く。
+   */
+  async openSampleModel(name: string): Promise<void> {
+    if (!/^[a-z0-9-]+$/.test(name)) return;
+    try {
+      this.ui.toast('見本のモデルを読み込んでいます…（数秒かかります）', 6000);
+      // .gz の拡張子だと、サーバーによっては勝手に展開して送ってくるので、独自の拡張子にしている
+      const res = await fetch(`./models/${name}.3dcadz`);
+      if (!res.ok) throw new Error('見本のモデルが見つかりません');
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const gz = buf[0] === 0x1f && buf[1] === 0x8b;
+      const text = gz ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : new TextDecoder().decode(buf);
+      await this.openAnyFile(new File([text], `${name}.3dcad`));
+    } catch (err) {
+      console.error(err);
+      this.ui.alert('読み込みエラー', String((err as Error).message ?? err));
+    }
+  }
+
+  /**
    * サンプル: 住宅の平面図・南立面図・東立面図（DXF）を図面シートとして配置し、
    * 「図面から立体」と同じ処理で 3 枚の外形の重なりから屋根付きの建物を作る。
    */

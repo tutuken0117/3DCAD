@@ -156,6 +156,7 @@ export class UI {
             <hr>
             <button data-act="sample-house">サンプル: 住宅（平面図＋立面図 → 立体）</button>
             <button data-act="sample">サンプル: 配置図＋点群（公共座標）</button>
+            <button data-act="sample-stadium">見本: マツダスタジアム（地図データから作成）</button>
           </div>
         </div>
         <div class="dropdown">
@@ -320,6 +321,7 @@ export class UI {
       if (act === 'new') void app.newProject();
       if (act === 'sample') void app.loadSample();
       if (act === 'sample-house') void app.loadHouseSample();
+      if (act === 'sample-stadium') void app.openSampleModel('mazda-stadium');
       if (act === 'panel') this.root.classList.toggle('panel-open');
       if (act === 'menu') {
         e.stopPropagation();

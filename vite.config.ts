@@ -18,7 +18,7 @@ function precache(): Plugin {
     name: 'precache-list',
     apply: 'build',
     generateBundle(_opt, bundle) {
-      const files = [...Object.keys(bundle), ...listFiles('samples')].filter((f) => f !== 'sw.js' && !f.endsWith('.map'));
+      const files = [...Object.keys(bundle), ...listFiles('samples')].filter((f) => f !== 'sw.js' && !f.endsWith('.map') && !f.startsWith('models/')); // models/（大きい見本モデル）は開くときだけ読む
       this.emitFile({ type: 'asset', fileName: 'precache.json', source: JSON.stringify(files.map((f) => `./${f}`)) });
     },
   };
