@@ -7,8 +7,7 @@ OpenStreetMap の 3D 建物データ（building:part）から、MAZDA Zoom-Zoom 
 - `prep.py` … Overpass API の JSON を、球場中心を原点にしたメートル座標の多角形に直す
 - `data/local.json`・`data/inside_local.json` … 変換済みの地図データ
 - `render/` … 画像の書き出し・1 ファイル版の確認に使ったスクリプト
-- `run_all.sh` … 組み立て → 座席の色 → 書き出し → 1 ファイル版 を続けて行う（作業フォルダのパス前提）
-- `save.sh` … 作業フォルダの内容をこのフォルダと `samples/models/` に写す
+- `run_all.sh <作業フォルダ>` … 組み立て → 座席の色 → 画像・資料の書き出し → `samples/models/` への保存 → 1 ファイル版 を続けて行う
 
 完成したモデルは `samples/models/mazda-stadium.3dcadz` にあり、アプリの「読み込み ▾ → 見本: マツダスタジアム」か、
 URL の末尾に `?model=mazda-stadium` を付けると開けます。
