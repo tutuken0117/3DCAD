@@ -836,12 +836,16 @@ const main = async () => {
         const tq: P2 = [-u[1], u[0]];
         let k = 0;
         for (let t = qMin + 4; t < qMax - 3; t += 8.5) {
-          const p: P2 = [u[0] * sF + tq[0] * t, u[1] * sF + tq[1] * t];
-          if (!pointIn(bandC, [p[0] - u[0] * 0.1, p[1] - u[1] * 0.1])) continue;
+          // 帯の前のふち（この位置で帯に当たるところ）
+          let sx = sF + 0.5;
+          while (sx > sF - 4 && !pointIn(bandC, [u[0] * sx + tq[0] * t, u[1] * sx + tq[1] * t])) sx -= 0.1;
+          if (sx <= sF - 4) continue;
+          const p: P2 = [u[0] * (sx + 0.05) + tq[0] * t, u[1] * (sx + 0.05) + tq[1] * t];
           const [txt, col] = BA[k++ % BA.length];
           const tc = textCs(txt, 0.9, 7.0);
           if (tc) pushDeco('レフトスタンドの帯の広告', col, place(tc, p, (6.0 + T3) / 2, tq, 0.005, 0.03));
         }
+        console.log('band ads', k, 'q', qMin.toFixed(1), qMax.toFixed(1));
       }
       // プレミアムテラス（クッション付きシート 2 列）とコージーテラス（2 段の木製ベンチ・テーブル）
       const ringB = (a: number, b: number) => bandC.intersect(band(u, sF - b, sF - a));
