@@ -631,9 +631,12 @@ export class Model {
   }
 
   findFaceByVertexSet(loop: number[]): number | undefined {
-    const key = [...loop].sort((a, b) => a - b).join(',');
+    let key: string | undefined;
+    const v0 = loop[0];
     for (const f of this.faces.values()) {
-      if (f.loop.length !== loop.length) continue;
+      // 同じ頂点の組なら、先頭の頂点を必ず含む（並べ替えて比べる前のふるい分け）
+      if (f.loop.length !== loop.length || !f.loop.includes(v0)) continue;
+      key ??= [...loop].sort((a, b) => a - b).join(',');
       if ([...f.loop].sort((a, b) => a - b).join(',') === key) return f.id;
     }
     return undefined;
