@@ -609,15 +609,23 @@ const main = async () => {
         for (const e of [-1, 1]) {
           dugSolids.push(ext(R(1.2, 1.4, e * (LEN / 2 - 0.9), -DEP / 2 + 0.7), FL, FL + 0.3), ext(R(1.2, 0.7, e * (LEN / 2 - 0.9), -DEP / 2 + 0.35), FL, FL + 0.6));
         }
-        // カメラマン席（ダッグアウトの外野寄りの横・写真と航空写真: 白い屋根の細長い箱）: 床 -0.9m、前は低い塀だけで開いている（ガラスなし）、上は白い屋根
+        // カメラマン席（ダッグアウトの外野寄りの横・写真）: 床 -0.9m の掘り込み。前はグラウンドから 0.9m の緑の塀（がんばれ!カープ SOGO）、
+        // 中に明るい灰色のカメラ台（階段付き）、後ろ半分だけ灰色の屋根、奥の壁に緑のロッカーと棚
         {
           const PB = R(12, 3.2, LEN / 2 + 0.4 + 6, -0.4);
           dug.push(PB);
           dugSolids.push(ext(PB, FL - 0.15, FL));
-          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 + 1.475), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 0.125, -0.4), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 12 - 0.125, -0.4), FL, 1.6));
-          camWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.3)); // 前の低い塀（その上は開いている）
-          pressRoof.push(ext(R(12.4, 3.6, LEN / 2 + 0.4 + 6, -0.4), 1.6, 1.8));
-          pressDesk.push(ext(R(11.4, 1.2, LEN / 2 + 0.4 + 6, -0.4 + 0.6), FL, FL + 0.35)); // カメラを置く台
+          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 + 1.475), FL, 1.2), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 0.125, -0.4), FL, 1.2), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 12 - 0.125, -0.4), FL, 1.2));
+          camWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.9)); // 前の塀（グラウンドから 0.9m、その上は開いている）
+          {
+            const tF2: P2 = [out2[1], -out2[0]];
+            const C2 = (along: number, outw: number): P2 => [cx + dl2[0] * along + out2[0] * outw, cy + dl2[1] * along + out2[1] * outw];
+            const tc = textCs('がんばれ!カープ   SOGO', 0.42, 8);
+            if (tc) pushDeco('カメラマン席の前の広告（白文字）', 'white', place(tc, C2(LEN / 2 + 0.4 + 6, -0.4 - 1.6), 0.45, tF2, 0.01, 0.02));
+          }
+          pressRoof.push(ext(R(12.4, 1.7, LEN / 2 + 0.4 + 6, -0.4 + 0.85), 1.05, 1.2)); // 後ろ半分だけの屋根
+          pressWall.push(ext(R(5, 0.5, LEN / 2 + 0.4 + 4, -0.4 + 1.1), FL, FL + 1.3)); // ロッカー
+          pressDesk.push(ext(R(9, 1.3, LEN / 2 + 0.4 + 7, -0.4 - 0.3), FL, FL + 0.6), ext(R(0.8, 0.6, LEN / 2 + 0.4 + 2.1, -0.4 - 0.3), FL, FL + 0.3)); // カメラ台と階段
         }
         // 写真（ベンチ）: 屋根の前の縁に白い MIZUNO、前の手すりに緑の帯の広告（デオデオ / DEODEO）と下の金網、
         // 屋根の上に客席を守る防球ネット（黒い細い柱と黒いネット）、中は緑の 1 人掛けの椅子
@@ -659,8 +667,8 @@ const main = async () => {
       add(union(dugBench), 'ダッグアウトの椅子の台', 'スタンド', 'concrete');
       add(union(dugChair), 'ダッグアウトの椅子（緑）', 'スタンド', '#2f6f4e');
       add(union(pressWall), 'カメラマン席の壁', 'スタンド', '#3a5b56');
-      add(union(pressRoof), 'カメラマン席の屋根（白）', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
-      add(union(pressDesk), 'カメラマン席のカメラ台', 'スタンド', 'concrete');
+      add(union(pressRoof), 'カメラマン席の屋根（灰色）', 'スタンド', '#7d8488');
+      add(union(pressDesk), 'カメラマン席のカメラ台', 'スタンド', '#c9ccc8');
       add(union(dugBanner), 'ベンチ前の手すりの広告の帯', 'スタンド', '#22553f');
       add(union(dugMesh), 'ベンチ前の金網', 'スタンド', 'net-black');
       add(union(dugNet), 'ベンチ上の防球ネット', 'スタンド', 'net-black');
@@ -690,7 +698,33 @@ const main = async () => {
       }
       // 席の前（グラウンド側）の通路
       const rest = keep.subtract(used).subtract(dugU).subtract(stageCs);
-      if (!stageCs.isEmpty()) add(ext(stageCs, -1.1, 0.55), 'ネット裏の平地（舞台のような床）', 'スタンド', (n) => (n.z > 0.5 ? '#4a4f52' : '#3a5b56'));
+      if (!stageCs.isEmpty()) {
+        // 写真: 本塁の真後ろは緑の低い建物（窓のある部屋）。屋根は平ら（舞台のような平地・高さ 2.2m）。前とフェンスの間は通路（床 -0.9m）
+        const frontPts: P2[] = [];
+        for (let a = 180 + SW; a >= 180 - SW - 1e-6; a -= 1) {
+          const dd = rot(cf, a);
+          let r = 6;
+          while (r < 45 && !pointIn(keep, at(dd, r))) r += 0.25;
+          frontPts.push(at(dd, r + 2.4));
+        }
+        const near = new CrossSection([ccw([home, ...frontPts])], 'Positive');
+        const box = stageCs.subtract(near);
+        const walk = stageCs.intersect(near);
+        add(ext(box, -1.1, 2.2), 'ネット裏の建物（緑・屋根は平地）', 'スタンド', (n) => (n.z > 0.5 ? '#8a8f92' : '#3a5b56'));
+        if (!walk.isEmpty()) add(ext(walk, -1.1, -0.9), 'ネット裏の建物の前の通路', 'スタンド', 'mortar-gray');
+        // 窓（黒い格子）と広告（RYOBI）
+        const plF = polyline(frontPts);
+        const wins: Mf[] = [];
+        for (let s2 = 1.6; s2 < plF.len - 1.2; s2 += 3.2) {
+          const { p, t } = plF.at(s2);
+          wins.push(place(rect(2.2, 1.3), p, 0.6, t, 0.0, 0.04));
+        }
+        add(union(wins), 'ネット裏の建物の窓', 'スタンド', '#1d2224');
+        for (const f of [0.18, 0.82]) {
+          const { p, t } = plF.at(plF.len * f);
+          pushDeco('ネット裏の広告（白文字）', 'white', place(textCs('RYOBI', 0.4, 2.2)!, p, 1.7, t, 0.03, 0.02));
+        }
+      }
       if (!rest.isEmpty()) st2.push(ext(rest, -1.1, -0.9));
       podiumPit = (podiumPit ? podiumPit.add(keep) : keep);
       add(union(st2), '砂かぶり席の段（正面・一塁側・三塁側）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
