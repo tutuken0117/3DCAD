@@ -308,6 +308,19 @@ const main = async () => {
   let lfPit: Cs | null = null;
   let podiumPit: Cs | null = null;
   const FC: [number, number] = [home[0] + cf[0] * 45, home[1] + cf[1] * 45]; // フィールドの中心付近
+  // グラウンドのすぐ外（芝のふちから 14m 以内）にあって、グラウンドの方を向いた低い縦の面
+  const fieldRings = pitchCs.offset(14, 'Round', 2, 64).toPolygons();
+  const nearField = (x: number, y: number) => fieldRings.some((r) => {
+    let ins = false;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i];
+      const [xj, yj] = r[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ins = !ins;
+    }
+    return ins;
+  });
+  const fieldWall = (nn: Vector3, cc: Vector3) =>
+    Math.abs(nn.z) < 0.3 && cc.z < 6 && nn.x * (FC[0] - cc.x) + nn.y * (FC[1] - cc.y) > 0 && nearField(cc.x, cc.y);
   const azOf = (p: [number, number]) => ((Math.atan2(p[0] - home[0], p[1] - home[1]) * 180) / Math.PI + 360) % 360; // 本塁からの方位（北 0・時計回り）
   const angDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
   const put = (id: string, x: number, y: number, z: number, rotDeg: number, layer = '家具') => {
@@ -462,7 +475,7 @@ const main = async () => {
     }
     if (t['building:part'] === 'steps') {
       const n = Math.max(2, Math.round(rh / (num(t['step:height']) ?? 0.15)));
-      push('観客席（段々）', 'スタンド', (nn) => (nn.z > 0.5 ? 'paint-red' : 'concrete'), slope(c, minH, h, rh, dir ?? 0, Math.min(n, 60)));
+      push('観客席（段々）', 'スタンド', (nn, cc) => (nn.z > 0.5 ? 'paint-red' : fieldWall(nn, cc) && cc.z < 2.5 ? '#3a5b56' : 'concrete'), slope(c, minH, h, rh, dir ?? 0, Math.min(n, 60)));
       nSeat++;
       continue;
     }
@@ -486,7 +499,8 @@ const main = async () => {
     const glass = t['building:material'] === 'glass';
     const isRoof = t.building === 'roof';
     const key = `${isRoof ? '屋根' : '建物'}|${roofC ?? ''}|${wallC ?? ''}|${glass}`;
-    push(key, isRoof ? '屋根・ひさし' : 'スタンド', (nn) => {
+    push(key, isRoof ? '屋根・ひさし' : 'スタンド', (nn, cc) => {
+      if (!isRoof && fieldWall(nn, cc)) return '#3a5b56'; // グラウンドに面した低い壁はフェンスと同じ濃い緑
       if (nn.z > 0.3) return roofC ?? (isRoof ? 'galva-silver' : 'concrete');
       if (nn.z < -0.3) return isRoof ? 'steel-white' : 'concrete';
       return glass ? 'glass' : wallC ?? (isRoof ? 'steel-white' : 'concrete');
@@ -568,12 +582,12 @@ const main = async () => {
         dug.push(foot);
         const FL = -0.9;
         dugSolids.push(ext(foot, FL - 0.15, FL)); // 床
-        dugSolids.push(ext(R(LEN, 0.3, 0, DEP / 2 - 0.15), FL, 1.1)); // 奥の壁
-        dugSolids.push(ext(R(0.3, DEP, -LEN / 2 + 0.15, 0), FL, 1.1), ext(R(0.3, DEP, LEN / 2 - 0.15, 0), FL, 1.1)); // 両端の壁
+        dugSolids.push(ext(R(LEN, 0.3, 0, DEP / 2 - 0.15), FL, 1.55)); // 奥の壁
+        dugSolids.push(ext(R(0.3, DEP, -LEN / 2 + 0.15, 0), FL, 1.55), ext(R(0.3, DEP, LEN / 2 - 0.15, 0), FL, 1.55)); // 両端の壁
         dugSolids.push(ext(R(LEN - 0.6, 0.2, 0, -DEP / 2 + 0.1), FL, 0.0)); // 前（グラウンドの高さまで）
-        dugRoof.push(ext(R(LEN + 0.4, DEP * 0.8, 0, DEP * 0.1), 0.75, 0.95)); // 屋根（低く、上は最前列の観客の足元）
-        dugRail.push(ext(R(LEN - 0.6, 0.06, 0, -DEP / 2 + 0.1), 0.85, 0.95)); // 手すり
-        for (let k = -4; k <= 4; k++) dugRail.push(ext(R(0.06, 0.06, k * 2, -DEP / 2 + 0.1), 0.0, 0.9));
+        dugRoof.push(ext(R(LEN + 0.4, DEP * 0.85, 0, DEP * 0.075), 1.35, 1.6)); // 屋根（グラウンドから 1.35m。写真: 前の開口は大人の胸くらい）
+        dugRail.push(ext(R(LEN - 0.6, 0.06, 0, -DEP / 2 + 0.1), 0.95, 1.02)); // 手すり
+        for (let k = -4; k <= 4; k++) dugRail.push(ext(R(0.06, 0.06, k * 2, -DEP / 2 + 0.1), 0.0, 1.35)); // 屋根を支える細い柱
         dugBench.push(ext(R(LEN - 2.4, 0.45, 0, DEP / 2 - 0.55), FL, FL + 0.45)); // 長いベンチ
         dugBench.push(ext(R(LEN - 2.4, 0.08, 0, DEP / 2 - 0.34), FL + 0.45, FL + 0.9)); // 背もたれ
         dugRack.push(ext(R(3, 0.3, -LEN / 2 + 2.2, DEP / 2 - 0.45), FL, FL + 1.3), ext(R(2, 0.3, LEN / 2 - 2, DEP / 2 - 0.45), FL, FL + 1.5)); // バットラック・ヘルメット棚
@@ -618,7 +632,7 @@ const main = async () => {
       if (!rest.isEmpty()) st2.push(ext(rest, -1.1, -0.9));
       podiumPit = (podiumPit ? podiumPit.add(keep) : keep);
       add(union(st2), '砂かぶり席の段（正面・一塁側・三塁側）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
-      add(union(sk2), '砂かぶり席の座席（正面砂かぶり・内野砂かぶり）', 'スタンド', 'paint-red');
+      add(union(sk2), '砂かぶり席の座席（正面砂かぶり・内野砂かぶり・緑の座席）', 'スタンド', '#2f6f4e');
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
       add(ext(fence, -0.9, 0.9), '砂かぶり席の前のフェンス（グラウンドから 0.9m）', 'スタンド', '#3a5b56');
@@ -641,7 +655,7 @@ const main = async () => {
           [b[0] - r, b[1] - r, b[2] - r], [b[0] + r, b[1] + r, b[2] + r], [b[0] - r, b[1] + r, b[2]], [b[0] + r, b[1] - r, b[2]],
         ]);
       // ネットの端（ダッグアウトの本塁寄りの端あたり）
-      const SPAN = 100;
+      const SPAN = 95;
       const samples: { p: P2; f: number }[] = [];
       for (let a = 180 - SPAN; a <= 180 + SPAN + 1e-6; a += 2.5) {
         const pp = netAt(a);
@@ -820,6 +834,27 @@ const main = async () => {
           k++;
           s2 += W + 2.2;
         }
+        // ラバーフェンスの上のネットフェンス（写真）: 高さ 2.2m、黒い細い支柱 4m おき、上に横の管。バックスクリーンの前（±10°）はなし
+        const netF: Mf[] = [];
+        const netP: Mf[] = [];
+        let prevP: P2 | null = null;
+        for (let s3 = 0; s3 <= pl.len; s3 += 2) {
+          const { p, t } = pl.at(Math.min(s3, pl.len - 0.01));
+          const nn = nOf(t);
+          const q2: P2 = [p[0] - nn[0] * 0.15, p[1] - nn[1] * 0.15];
+          if (Math.abs(angOf(p)) < 10) { prevP = null; continue; }
+          if (prevP) {
+            const L = Math.hypot(q2[0] - prevP[0], q2[1] - prevP[1]);
+            const tt: P2 = [(q2[0] - prevP[0]) / L, (q2[1] - prevP[1]) / L];
+            const mid: P2 = [(q2[0] + prevP[0]) / 2, (q2[1] + prevP[1]) / 2];
+            netF.push(place(rect(L, 2.2), mid, HR + 0.08 + 1.1, tt, -0.01, 0.02));
+            netP.push(place(rect(L + 0.05, 0.08), mid, HR + 2.28, tt, -0.04, 0.08));
+          }
+          if (Math.round(s3) % 4 === 0) netP.push(Manifold.cylinder(2.25, 0.035, 0.035, 8).translate([q2[0], q2[1], HR + 0.05]));
+          prevP = q2;
+        }
+        add(union(netF), '外野のネットフェンス（ラバーフェンスの上）', 'スタンド', 'net-black');
+        add(union(netP), 'ネットフェンスの支柱・横の管', 'スタンド', '#24282a');
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
       }
       // ② 外野スタンド（2 層目）
@@ -1131,13 +1166,13 @@ const main = async () => {
       // 選手の表示（左）
       const P0 = E0 + 0.4;
       panel(P0, P0 + 6.2, ZE1 - 1.0, ZE1 - 0.25, 0.1, 0.01, 'スコアボードの LED（白い帯）', '#e9ecef');
-      txt('77 ガルシア', P0 + 3.1, ZE1 - 0.62, 0.5, 5.6, '#111111', 0.12);
-      txt('投球数 83  奪三振 2', P0 + 3.1, ZE1 - 1.45, 0.42, 5.8, 'white');
+      txt('P 才木 浩人', P0 + 3.1, ZE1 - 0.62, 0.5, 5.6, '#111111', 0.12);
+      txt('投球数 98  奪三振 4', P0 + 3.1, ZE1 - 1.45, 0.42, 5.8, 'white');
       panel(P0, P0 + 6.2, ZE1 - 2.6, ZE1 - 1.85, 0.1, 0.01, 'スコアボードの LED（赤い帯）', '#d0202e');
-      txt('4 小窪 哲也', P0 + 3.1, ZE1 - 2.22, 0.5, 5.6, 'white', 0.12);
-      txt('AVG .264  HR 1  RBI 4', P0 + 3.1, ZE1 - 3.05, 0.4, 5.8, 'white');
-      txt('佐 名 吉 白', P0 + 3.1, ZE1 - 3.85, 0.45, 5.8, 'white');
-      txt('藤 幸 本 井', P0 + 3.1, ZE1 - 4.55, 0.45, 5.8, 'white');
+      txt('4 末包 昇大', P0 + 3.1, ZE1 - 2.22, 0.5, 5.6, 'white', 0.12);
+      txt('AVG .291  HR 2  RBI 4', P0 + 3.1, ZE1 - 3.05, 0.4, 5.8, 'white');
+      txt('本日 3打数 2安打', P0 + 3.1, ZE1 - 3.85, 0.45, 5.8, 'white');
+      txt('第2号 2ラン', P0 + 3.1, ZE1 - 4.55, 0.45, 5.8, '#ffd400');
       // 得点（1〜9 回・R H E）
       const G0 = P0 + 6.8;
       const colX = (i: number) => G0 + 1.6 + i * 0.95;
@@ -1146,8 +1181,8 @@ const main = async () => {
       for (let i = 0; i < 9; i++) txt(String(i + 1), colX(i), ZE1 - 0.62, 0.45, 0.8, 'white');
       ['R', 'H', 'E'].forEach((ch, i) => txt(ch, rheX(i), ZE1 - 0.62, 0.45, 0.8, 'white'));
       const rows: [string, string, string[], string[]][] = [
-        ['T', '#f5c400', ['0', '7', '0', '0', '0', '0', '', '', ''], ['7', '12', '1']],
-        ['C', '#d0202e', ['0', '0', '0', '0', '0', '', '', '', ''], ['0', '7', '0']],
+        ['T', '#f5c400', ['0', '0', '0', '1', '0', '0', '0', '0', ''], ['1', '5', '1']],
+        ['C', '#d0202e', ['2', '0', '0', '3', '0', '0', '1', '', ''], ['6', '11', '0']],
       ];
       rows.forEach(([lg, lc, inn, rhe], r) => {
         const zr = ZE1 - 1.75 - r * 1.25;
@@ -1168,8 +1203,8 @@ const main = async () => {
       const O0 = rheX(2) + 1.2;
       const OW = (E1 - 0.3 - O0 - 1.2) / 9;
       const teams: [string, string, string[]][] = [
-        ['阪神', '#f5c400', ['近本', '糸原', '中谷', '大山', 'マルテ', '梅野', '高山', '木浪', 'ガルシア']],
-        ['広島', '#d0202e', ['野間', '菊池', 'バティスタ', '鈴木', '西川', '磯村', '小窪', '田中', '九里']],
+        ['阪神', '#f5c400', ['近本', '中野', '森下', '佐藤輝', '大山', '前川', '坂本', '小幡', '才木']],
+        ['広島', '#d0202e', ['中村奨', '菊池', '小園', '末包', '坂倉', 'モンテロ', 'ファビアン', '矢野', '森下']],
       ];
       teams.forEach(([nm, col, names], r) => {
         const zt = ZE1 - 0.3 - r * 2.55;
@@ -1178,7 +1213,7 @@ const main = async () => {
         names.forEach((v, i) => {
           const x = O0 + 1.2 + (i + 0.5) * OW;
           txt(String(i + 1), x, zt - 0.3, 0.36, OW * 0.8, '#ffd400');
-          vtxt(v.length > 3 ? v.slice(0, 3) : v, x, zt - 0.6, zt - 2.3, OW * 0.75, 'white');
+          vtxt(v, x, zt - 0.6, zt - 2.3, OW * 0.75, 'white');
         });
       });
       // LED の下の細い帯の広告
