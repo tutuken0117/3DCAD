@@ -848,8 +848,6 @@ const main = async () => {
       const gap = offPitch(F0 + 2.2).subtract(offPitch(F0)).intersect(OF).subtract(SKW).subtract(LFW).subtract(standsU);
       add(Manifold.union([ext(fenceAll.subtract(LFW).add(fenceN), -0.1, HR), ext(fenceSK, -1.3, 0.25), ext(fenceSK, 1.8, HR)]), '外野フェンス（ラバー・連続）', 'スタンド', '#3a5b56');
       if (!gap.isEmpty()) add(ext(gap, -0.1, HR - 0.05), 'フェンスの裏（スタンドとのすき間）', 'スタンド', (n) => (n.z > 0.5 ? 'concrete' : '#3a5b56'));
-      add(ext(fenceAll.subtract(LFW), HR, HR + 0.08), 'ホームランライン（黄色）', 'スタンド', 'paint-yellow');
-      add(ext(fenceR, HR, HR + 0.08), 'ホームランライン（黄色・3.6m）', 'スタンド', 'paint-yellow');
       {
         const c0 = rot(cf, A_END - 0.3);
         const c1 = rot(cf, A_END + 0.02);
@@ -859,6 +857,9 @@ const main = async () => {
         if (!cap.isEmpty()) add(ext(cap, -0.1, 6.0), 'レフトスタンドのセンター側の壁', 'スタンド', '#3a5b56');
       }
       add(ext(fenceSK, 0.25, 1.8), 'フェンスの金網（外野砂かぶり席の前）', 'スタンド', 'glass-clear');
+      // ポール際（外野砂かぶり席の前）もラバーの上にネットフェンス、最上部に黄色のライン
+      add(ext(fenceSK.subtract(fenceSK.offset(-0.13, 'Round')), HR, HR + 2.25), 'ポール際のネットフェンス', 'スタンド', 'net-black');
+      add(ext(fenceSK, HR + 2.25, HR + 2.37), 'ホームランライン（ポール際・黄色）', 'スタンド', 'paint-yellow');
       // ---- 外野フェンスの広告（写真の並び: SUNSTAR GUM・クマヒラ・ユウベル・福屋・キリンビバレッジ…）----
       {
         const ringF = offPitch(WT).toPolygons().sort((a2, b2) => b2.length - a2.length)[0];
@@ -882,27 +883,28 @@ const main = async () => {
           k++;
           s2 += W + 2.2;
         }
-        // ラバーフェンスの上のネットフェンス（写真）: 高さ 2.2m、黒い細い支柱 4m おき、上に横の管。バックスクリーンの前（±10°）はなし
+        // ラバーフェンスの上のネットフェンス（写真）: 高さ 2.2m、黒い細い支柱 4m おき、最上部は黄色の管（ホームランライン）。バックスクリーンの前も続ける
         const netF: Mf[] = [];
         const netP: Mf[] = [];
+        const netTop: Mf[] = [];
         let prevP: P2 | null = null;
         for (let s3 = 0; s3 <= pl.len; s3 += 2) {
           const { p, t } = pl.at(Math.min(s3, pl.len - 0.01));
           const nn = nOf(t);
           const q2: P2 = [p[0] - nn[0] * 0.15, p[1] - nn[1] * 0.15];
-          if (Math.abs(angOf(p)) < 10) { prevP = null; continue; }
           if (prevP) {
             const L = Math.hypot(q2[0] - prevP[0], q2[1] - prevP[1]);
             const tt: P2 = [(q2[0] - prevP[0]) / L, (q2[1] - prevP[1]) / L];
             const mid: P2 = [(q2[0] + prevP[0]) / 2, (q2[1] + prevP[1]) / 2];
             netF.push(place(rect(L, 2.2), mid, HR + 0.08 + 1.1, tt, -0.01, 0.02));
-            netP.push(place(rect(L + 0.05, 0.08), mid, HR + 2.28, tt, -0.04, 0.08));
+            netTop.push(place(rect(L + 0.05, 0.12), mid, HR + 2.3, tt, -0.06, 0.12)); // いちばん上は黄色（打球を見やすく）
           }
           if (Math.round(s3) % 4 === 0) netP.push(Manifold.cylinder(2.25, 0.035, 0.035, 8).translate([q2[0], q2[1], HR + 0.05]));
           prevP = q2;
         }
         add(union(netF), '外野のネットフェンス（ラバーフェンスの上）', 'スタンド', 'net-black');
-        add(union(netP), 'ネットフェンスの支柱・横の管', 'スタンド', '#24282a');
+        add(union(netP), 'ネットフェンスの支柱', 'スタンド', '#24282a');
+        add(union(netTop), 'ホームランライン（ネットフェンスの最上部・黄色）', 'スタンド', 'paint-yellow');
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
       }
       // ② 外野スタンド（2 層目）
