@@ -552,6 +552,11 @@ const main = async () => {
       const dugBench: Mf[] = [];
       const dugRack: Mf[] = [];
       const camWall: Mf[] = [];
+      const dugBanner: Mf[] = [];
+      const dugMesh: Mf[] = [];
+      const dugNet: Mf[] = [];
+      const dugPole: Mf[] = [];
+      const dugChair: Mf[] = [];
       const front = CrossSection.union(partItems.filter((i) => (num(i.tags.min_height) ?? 0) < 1 && !i.tags['tower:type']).map((i) => shape(i)).filter((x): x is Cs => !!x)).offset(1.5, 'Round', 2, 64).toPolygons();
       const inFront = (p: [number, number]) => front.some((r) => {
         let ins = false;
@@ -588,8 +593,7 @@ const main = async () => {
         dugRoof.push(ext(R(LEN + 0.4, DEP * 0.85, 0, DEP * 0.075), 1.35, 1.6)); // 屋根（グラウンドから 1.35m。写真: 前の開口は大人の胸くらい）
         dugRail.push(ext(R(LEN - 0.6, 0.06, 0, -DEP / 2 + 0.1), 0.95, 1.02)); // 手すり
         for (let k = -4; k <= 4; k++) dugRail.push(ext(R(0.06, 0.06, k * 2, -DEP / 2 + 0.1), 0.0, 1.35)); // 屋根を支える細い柱
-        dugBench.push(ext(R(LEN - 2.4, 0.45, 0, DEP / 2 - 0.55), FL, FL + 0.45)); // 長いベンチ
-        dugBench.push(ext(R(LEN - 2.4, 0.08, 0, DEP / 2 - 0.34), FL + 0.45, FL + 0.9)); // 背もたれ
+        dugBench.push(ext(R(LEN - 2.4, 0.4, 0, DEP / 2 - 0.62), FL, FL + 0.41)); // 椅子の台
         dugRack.push(ext(R(3, 0.3, -LEN / 2 + 2.2, DEP / 2 - 0.45), FL, FL + 1.3), ext(R(2, 0.3, LEN / 2 - 2, DEP / 2 - 0.45), FL, FL + 1.5)); // バットラック・ヘルメット棚
         // 両端の階段（2 段）
         for (const e of [-1, 1]) {
@@ -600,13 +604,49 @@ const main = async () => {
         dug.push(cam);
         dugSolids.push(ext(cam, FL - 0.15, FL));
         camWall.push(ext(R(6, 0.2, -LEN / 2 - 3.2, -0.7 - 1.2), FL, 0.55));
+        // 写真（ベンチ）: 屋根の前の縁に白い MIZUNO、前の手すりに緑の帯の広告（デオデオ / DEODEO）と下の金網、
+        // 屋根の上に客席を守る防球ネット（黒い細い柱と黒いネット）、中は緑の 1 人掛けの椅子
+        {
+          const tF: P2 = [out2[1], -out2[0]]; // 正面（グラウンド）から見て右向き
+          const C = (along: number, outw: number): P2 => [cx + dl2[0] * along + out2[0] * outw, cy + dl2[1] * along + out2[1] * outw];
+          const roofFront = -DEP * 0.35;
+          for (let a = -LEN / 2 + 2.5; a < LEN / 2 - 1; a += 4.5) {
+            const tc = textCs('MIZUNO', 0.24, 2.4);
+            if (tc) pushDeco('ベンチの屋根の広告（白文字）', 'white', place(tc, C(a, roofFront), 1.47, tF, 0.01, 0.02));
+          }
+          // 前の手すりの帯（0.75〜1.05m）と下の金網
+          dugBanner.push(place(rect(LEN - 0.6, 0.3), C(0, -DEP / 2 + 0.1), 0.9, tF, 0.04, 0.04));
+          dugMesh.push(place(rect(LEN - 0.6, 0.75), C(0, -DEP / 2 + 0.1), 0.375, tF, 0.0, 0.02));
+          for (let a = -LEN / 2 + 1.8, i = 0; a < LEN / 2 - 1; a += 3.2, i++) {
+            const tc = textCs(i % 2 ? 'DEODEO' : 'デオデオ', 0.2, 2.6);
+            if (tc) pushDeco('ベンチ前の広告（白文字）', 'white', place(tc, C(a, -DEP / 2 + 0.1), 0.9, tF, 0.09, 0.02));
+          }
+          // 屋根の上の防球ネット（屋根の前の縁・高さ 1.6〜4.4m・柱 3m おき）
+          dugNet.push(place(rect(LEN + 0.4, 2.8), C(0, roofFront + 0.1), 3.0, tF, 0, 0.02));
+          for (let a = -LEN / 2; a <= LEN / 2 + 0.01; a += 3) {
+            const pp = C(a, roofFront + 0.1);
+            dugPole.push(Manifold.cylinder(2.9, 0.04, 0.04, 8).translate([pp[0], pp[1], 1.6]));
+          }
+          // 1 人掛けの椅子（緑）
+          for (let a = -LEN / 2 + 1.6; a < LEN / 2 - 1.4; a += 0.62) {
+            const pp = C(a, DEP / 2 - 0.62);
+            dugChair.push(Manifold.cube([0.5, 0.45, 0.08], true).rotate([0, 0, ang]).translate([pp[0], pp[1], FL + 0.45]));
+            const pb = C(a, DEP / 2 - 0.4);
+            dugChair.push(Manifold.cube([0.5, 0.06, 0.45], true).rotate([0, 0, ang]).translate([pb[0], pb[1], FL + 0.72]));
+          }
+        }
         console.log('dugout', sgn, t);
       }
       const dugU = CrossSection.union(dug);
       add(union(dugSolids), 'ダッグアウト（ベンチ）の床・壁・階段', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
       add(union(dugRoof), 'ダッグアウトの屋根', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
       add(union(dugRail), 'ダッグアウトの手すり', 'スタンド', 'steel-white');
-      add(union(dugBench), 'ダッグアウトのベンチ（長椅子）', 'スタンド', 'fabric-navy');
+      add(union(dugBench), 'ダッグアウトの椅子の台', 'スタンド', 'concrete');
+      add(union(dugChair), 'ダッグアウトの椅子（緑）', 'スタンド', '#2f6f4e');
+      add(union(dugBanner), 'ベンチ前の手すりの広告の帯', 'スタンド', '#22553f');
+      add(union(dugMesh), 'ベンチ前の金網', 'スタンド', 'net-black');
+      add(union(dugNet), 'ベンチ上の防球ネット', 'スタンド', 'net-black');
+      add(union(dugPole), 'ベンチ上の防球ネットの柱', 'スタンド', '#24282a');
       add(union(dugRack), 'バットラック・ヘルメット棚', 'スタンド', 'wood-walnut');
       add(union(camWall), 'カメラマン席の塀（0.55m）', 'スタンド', '#3a5b56');
       podiumPit = dugU;
