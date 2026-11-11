@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 const [proj, out, ...cams] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
-const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
+const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
 page.on('pageerror', (e) => console.log('ERR', e.message));
 await page.goto('http://localhost:4173/');
 await page.waitForTimeout(800);
@@ -24,6 +24,6 @@ for (let i = 0; i < cams.length; i += 2) {
     v.requestRender();
   }, [[x, y, z], [tx, ty, tz], Number(process.env.FOV || 62)]);
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: out.replace('.png', `-${i / 2}.png`) });
+  await page.screenshot({ path: out.replace('.png', `-${i / 2}.png`), clip: { x: 0, y: 46, width: 1100, height: 769 } });
 }
 await browser.close();

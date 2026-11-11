@@ -564,6 +564,10 @@ const main = async () => {
       const dugNet: Mf[] = [];
       const dugPole: Mf[] = [];
       const dugChair: Mf[] = [];
+      const pressWall: Mf[] = [];
+      const pressGlass: Mf[] = [];
+      const pressRoof: Mf[] = [];
+      const pressDesk: Mf[] = [];
       const front = CrossSection.union(partItems.filter((i) => (num(i.tags.min_height) ?? 0) < 1 && !i.tags['tower:type']).map((i) => shape(i)).filter((x): x is Cs => !!x)).offset(1.5, 'Round', 2, 64).toPolygons();
       const inFront = (p: [number, number]) => front.some((r) => {
         let ins = false;
@@ -605,6 +609,17 @@ const main = async () => {
         // 両端の階段（2 段）
         for (const e of [-1, 1]) {
           dugSolids.push(ext(R(1.2, 1.4, e * (LEN / 2 - 0.9), -DEP / 2 + 0.7), FL, FL + 0.3), ext(R(1.2, 0.7, e * (LEN / 2 - 0.9), -DEP / 2 + 0.35), FL, FL + 0.6));
+        }
+        // 記者席（ダッグアウトの外野寄りの横・写真と航空写真: 白い屋根の細長い箱）: 床 -0.9m、前はガラス、上は白い屋根
+        {
+          const PB = R(12, 3.2, LEN / 2 + 0.4 + 6, -0.4);
+          dug.push(PB);
+          dugSolids.push(ext(PB, FL - 0.15, FL));
+          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 + 1.475), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 0.125, -0.4), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 12 - 0.125, -0.4), FL, 1.6));
+          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.25)); // 前の腰壁
+          pressGlass.push(ext(R(11.5, 0.06, LEN / 2 + 0.4 + 6, -0.4 - 1.5), 0.25, 1.5));
+          pressRoof.push(ext(R(12.4, 3.6, LEN / 2 + 0.4 + 6, -0.4), 1.6, 1.8));
+          pressDesk.push(ext(R(11.4, 0.6, LEN / 2 + 0.4 + 6, -0.4 - 0.9), FL + 0.7, FL + 0.75), ext(R(11.4, 0.5, LEN / 2 + 0.4 + 6, -0.4 + 0.2), FL, FL + 0.45));
         }
         // カメラマン席（ダッグアウトの本塁寄りの横）: 床 -0.9m、前の塀 0.55m
         const cam = R(6, 2.6, -LEN / 2 - 3.2, -0.7);
@@ -650,6 +665,10 @@ const main = async () => {
       add(union(dugRail), 'ダッグアウトの手すり', 'スタンド', 'steel-white');
       add(union(dugBench), 'ダッグアウトの椅子の台', 'スタンド', 'concrete');
       add(union(dugChair), 'ダッグアウトの椅子（緑）', 'スタンド', '#2f6f4e');
+      add(union(pressWall), '記者席の壁', 'スタンド', '#3a5b56');
+      add(union(pressGlass), '記者席の前のガラス', 'スタンド', 'glass');
+      add(union(pressRoof), '記者席の屋根（白）', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
+      add(union(pressDesk), '記者席の机・椅子の台', 'スタンド', 'wood-light');
       add(union(dugBanner), 'ベンチ前の手すりの広告の帯', 'スタンド', '#22553f');
       add(union(dugMesh), 'ベンチ前の金網', 'スタンド', 'net-black');
       add(union(dugNet), 'ベンチ上の防球ネット', 'スタンド', 'net-black');
@@ -663,19 +682,23 @@ const main = async () => {
       const st2: Mf[] = [];
       let used = off(0);
       // スタンド側から下がり、最前列はグラウンドより低い（最前列の観客の胸がグラウンドの高さ）
+      // ネット裏（本塁の真後ろ）は席ではなく舞台のような平地（航空写真: 本塁裏の三角形の平らな所）
+      const SW = 17;
+      const stageCs = new CrossSection([ccw([home, at(rot(cf, 180 - SW), 45), at(rot(cf, 180), 46), at(rot(cf, 180 + SW), 45)])], 'Positive').intersect(keep).subtract(dugU);
       for (let k = 0; k < 10; k++) {
-        const ringK = off((k + 1) * W).subtract(off(k * W)).intersect(keep).subtract(dugU);
+        const ringK = off((k + 1) * W).subtract(off(k * W)).intersect(keep).subtract(dugU).subtract(stageCs);
         if (ringK.isEmpty()) continue;
         const top = Math.max(-0.75, 1.85 - k * 0.33);
         st2.push(ext(ringK, -1.1, top));
-        const seat = off(k * W + 0.55).subtract(off(k * W + 0.1)).intersect(keep).subtract(dugU).subtract(aisles);
-        const back = off(k * W + 0.13).subtract(off(k * W + 0.05)).intersect(keep).subtract(dugU).subtract(aisles);
+        const seat = off(k * W + 0.55).subtract(off(k * W + 0.1)).intersect(keep).subtract(dugU).subtract(aisles).subtract(stageCs);
+        const back = off(k * W + 0.13).subtract(off(k * W + 0.05)).intersect(keep).subtract(dugU).subtract(aisles).subtract(stageCs);
         if (!seat.isEmpty()) sk2.push(ext(seat, top, top + 0.42));
         if (!back.isEmpty()) sk2.push(ext(back, top + 0.42, top + 0.82));
         used = off((k + 1) * W);
       }
       // 席の前（グラウンド側）の通路
-      const rest = keep.subtract(used).subtract(dugU);
+      const rest = keep.subtract(used).subtract(dugU).subtract(stageCs);
+      if (!stageCs.isEmpty()) add(ext(stageCs, -1.1, 0.55), 'ネット裏の平地（舞台のような床）', 'スタンド', (n) => (n.z > 0.5 ? '#4a4f52' : '#3a5b56'));
       if (!rest.isEmpty()) st2.push(ext(rest, -1.1, -0.9));
       podiumPit = (podiumPit ? podiumPit.add(keep) : keep);
       add(union(st2), '砂かぶり席の段（正面・一塁側・三塁側）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
@@ -732,8 +755,24 @@ const main = async () => {
       const RZ = 27.5;
       for (const [e, sg] of [[samples[0], -1], [samples[samples.length - 1], 1]] as [{ p: P2; f: number } | undefined, number][]) {
         if (!e) continue;
-        const an = at(rot(cf, 180 + sg * (SPAN + 18)), 50);
-        netWire.push(cable([e.p[0], e.p[1], HT], [an[0], an[1], 25.5], 0.05));
+        // 2 階スタンドの屋根（地図データの屋根・25m 以上）のうち、狙った向きにいちばん近い前のふちの点
+        const want = 180 + sg * (SPAN + 16);
+        let an: [number, number, number] | null = null;
+        let bestD = Infinity;
+        for (const it of partItems) {
+          if (it.tags.building !== 'roof' || (num(it.tags.min_height) ?? 0) < 24) continue;
+          for (const v of it.outer![0]) {
+            const vx = v[0] - home[0];
+            const vy = v[1] - home[1];
+            const a2 = deg(Math.atan2(cf[0] * vy - cf[1] * vx, cf[0] * vx + cf[1] * vy));
+            const da = Math.abs(((a2 - want + 540) % 360) - 180);
+            const dd = Math.hypot(vx, vy);
+            if (da < 7 && dd < bestD) { bestD = dd; an = [v[0], v[1], num(it.tags.height) ?? 25.5]; }
+          }
+        }
+        if (!an) { const q = at(rot(cf, want), 62); an = [q[0], q[1], 25.5]; }
+        netWire.push(cable([e.p[0], e.p[1], HT], an, 0.05));
+        console.log('net anchor', sg, an.map((x) => x.toFixed(1)).join(','));
         // ネットの端の縦のワイヤー
         netWire.push(cable([e.p[0], e.p[1], 0.9], [e.p[0], e.p[1], HT], 0.03));
       }
@@ -842,8 +881,8 @@ const main = async () => {
       add(Manifold.union([ext(fenceAll.subtract(LFW).add(fenceN), -0.1, HR), ext(fenceSK, -1.3, 0.25), ext(fenceSK, 1.8, HR)]), '外野フェンス（ラバー・連続）', 'スタンド', '#3a5b56');
       if (!gap.isEmpty()) add(ext(gap, -0.1, HR - 0.05), 'フェンスの裏（スタンドとのすき間）', 'スタンド', (n) => (n.z > 0.5 ? 'concrete' : '#3a5b56'));
       {
-        // ポールの外（ファウル地域）もフェンスはウォーニングトラックに沿って切れずに続き、スタンドの前につながる（航空写真: くぼみはない）
-        const EXT = fan(-62, -45.6).add(fan(A_POLE, 62)).intersect(CrossSection.circle(400, 8).translate(home).subtract(CrossSection.circle(70, 96).translate(home)));
+        // ライトポールの外（ファウル地域）もフェンスはウォーニングトラックに沿って切れずに続き、スタンドの前につながる（航空写真: くぼみはない）。レフト側はスタンドの前がそのままフェンス
+        const EXT = fan(-62, -45.6).intersect(CrossSection.circle(400, 8).translate(home).subtract(CrossSection.circle(70, 96).translate(home)));
         const stO = standsU.offset(0.02, 'Square');
         const fenceExt = offPitch(F0).subtract(offPitch(WT)).intersect(EXT).subtract(stO);
         const fillExt = offPitch(F0 + 14).subtract(offPitch(F0)).intersect(EXT).subtract(stO).subtract(SKW).subtract(LFW);
@@ -1097,6 +1136,27 @@ const main = async () => {
     }
   }
 
+  // 2 階スタンドの屋根の上の太陽光パネル（濃い青・1.7m おきの列）
+  {
+    const panels: Mf[] = [];
+    for (const it of partItems) {
+      if (it.tags.building !== 'roof' || (num(it.tags.min_height) ?? 0) < 24) continue;
+      const c = shape(it);
+      if (!c) continue;
+      const h = num(it.tags.height) ?? 25.25;
+      const [x, y] = centroid(it);
+      const l = Math.hypot(x - home[0], y - home[1]);
+      const d: P2 = [(x - home[0]) / l, (y - home[1]) / l];
+      const inner = c.offset(-0.4, 'Square');
+      if (inner.isEmpty()) continue;
+      const rows: Cs[] = [];
+      for (let s2 = l - 30; s2 < l + 30; s2 += 1.7) rows.push(band(d, s2, s2 + 1.55));
+      const pv = inner.intersect(CrossSection.union(rows));
+      if (!pv.isEmpty()) panels.push(ext(pv, h + 0.05, h + 0.12));
+    }
+    add(union(panels), '太陽光パネル（2 階スタンドの屋根）', '屋根・ひさし', (n) => (n.z > 0.5 ? '#1e3354' : 'steel-white'));
+    console.log('solar roofs', panels.length);
+  }
   // 照明塔の柱（照明の箱の下・高さ 39.5m まで）
   for (const it of partItems.filter((i) => i.tags['tower:type'] === 'lighting')) {
     const [x, y] = centroid(it);
