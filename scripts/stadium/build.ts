@@ -720,7 +720,7 @@ const main = async () => {
           wins.push(place(rect(2.2, 1.3), p, 0.6, t, 0.0, 0.04));
         }
         add(union(wins), 'ネット裏の建物の窓', 'スタンド', '#1d2224');
-        for (const f of [0.18, 0.82]) {
+        for (const f of [0.25, 0.75]) {
           const { p, t } = plF.at(plF.len * f);
           pushDeco('ネット裏の広告（白文字）', 'white', place(textCs('RYOBI', 0.4, 2.2)!, p, 1.7, t, 0.03, 0.02));
         }
