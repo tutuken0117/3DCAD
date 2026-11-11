@@ -320,7 +320,7 @@ const main = async () => {
     return ins;
   });
   const fieldWall = (nn: Vector3, cc: Vector3) =>
-    Math.abs(nn.z) < 0.3 && cc.z < 6 && nn.x * (FC[0] - cc.x) + nn.y * (FC[1] - cc.y) > 0 && nearField(cc.x, cc.y);
+    Math.abs(nn.z) < 0.3 && cc.z < 6 && nn.x * (FC[0] - cc.x) + nn.y * (FC[1] - cc.y) > -0.35 * Math.hypot(FC[0] - cc.x, FC[1] - cc.y) && nearField(cc.x, cc.y); // 横向きの面（角の妻壁）も含める
   const azOf = (p: [number, number]) => ((Math.atan2(p[0] - home[0], p[1] - home[1]) * 180) / Math.PI + 360) % 360; // 本塁からの方位（北 0・時計回り）
   const angDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
   const put = (id: string, x: number, y: number, z: number, rotDeg: number, layer = '家具') => {
@@ -530,7 +530,7 @@ const main = async () => {
   // 名前のある席の名前を、その区画に付ける
   const named = seatsAll.filter((x) => x.it.tags.name).map((x) => x.it.tags.name);
   console.log('named seats', named);
-  add(union(treads), '観客席の段（コンクリート）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
+  add(union(treads), '観客席の段（コンクリート）', 'スタンド', (n, c) => (n.z > 0.5 ? 'mortar-gray' : fieldWall(n, c) && c.z < 2.0 ? '#3a5b56' : 'concrete'));
   add(union(seatBlocks), '座席（赤）', 'スタンド', 'paint-red');
   add(union(frontFences), 'スタンド前面のフェンス（濃い緑）', 'スタンド', '#3a5b56');
   add(union(tatami), '鯉桟敷（畳・掘りごたつ）', 'スタンド', (n) => (n.z > 0.5 ? 'tatami' : 'wood-light'));
@@ -638,7 +638,7 @@ const main = async () => {
         console.log('dugout', sgn, t);
       }
       const dugU = CrossSection.union(dug);
-      add(union(dugSolids), 'ダッグアウト（ベンチ）の床・壁・階段', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
+      add(union(dugSolids), 'ダッグアウト（ベンチ）の床・壁・階段', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : '#3a5b56')); // 写真: 壁は緑
       add(union(dugRoof), 'ダッグアウトの屋根', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
       add(union(dugRail), 'ダッグアウトの手すり', 'スタンド', 'steel-white');
       add(union(dugBench), 'ダッグアウトの椅子の台', 'スタンド', 'concrete');
