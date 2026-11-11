@@ -622,11 +622,11 @@ const main = async () => {
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
       add(ext(fence, -0.9, 0.9), '砂かぶり席の前のフェンス（グラウンドから 0.9m）', 'スタンド', '#3a5b56');
-      // バックネット: 砂かぶり席の前のフェンスの上から張る黒いネット。
-      // 本塁裏の両側と後ろに高い鋼管の柱（約 15m）を立て、柱の上どうしをワイヤーで結んで、ネットをそのワイヤーから吊る（ワイヤーは柱の間で少したわむ）
-      const NETR = 26;
+      // バックネット（写真）: 一塁側・三塁側のダッグアウトの近くに立てた高い柱（約 27m）の間に、高さ 20m 余りのワイヤーを張り、
+      // そこから大きな黒いネットを砂かぶり席の前のフェンスまで垂らす。ワイヤーは本塁裏の屋根から斜めのワイヤーで吊り、ネットには細い縦のワイヤーが入る
+      const NETR = 45;
       const keepO = keep.offset(0.06, 'Round');
-      /** 本塁から向き a（センターから三塁側へ +）で、ネットの帯に当たる所 */
+      /** 本塁から向き a（センターから三塁側へ +）で、ネットの帯（フェンス）に当たる所 */
       const netAt = (a: number): P2 | null => {
         const dd = rot(cf, a);
         let r = 8;
@@ -635,48 +635,60 @@ const main = async () => {
         while (r > 6 && pointIn(keepO, at(dd, r - 0.05))) r -= 0.05;
         return at(dd, r - 0.02);
       };
-      const POLES = [180 - 66, 180 - 33, 180, 180 + 33, 180 + 66];
-      const HP = 15.0; // 柱の高さ
-      const SAG = 1.6; // ワイヤーのたわみ
-      const netSolids: Mf[] = [];
-      const netSteel: Mf[] = [];
-      const netWire: Mf[] = [];
-      for (let k = 0; k + 1 < POLES.length; k++) {
-        const a0 = POLES[k];
-        const a1 = POLES[k + 1];
-        const N = 14;
-        let prev: { p: P2; h: number } | null = null;
-        for (let j = 0; j <= N; j++) {
-          const f = j / N;
-          const pp = netAt(a0 + (a1 - a0) * f);
-          if (!pp) { prev = null; continue; }
-          const h = HP - 0.3 - SAG * 4 * f * (1 - f);
-          if (prev) {
-            const L = Math.hypot(pp[0] - prev.p[0], pp[1] - prev.p[1]);
-            const tt: P2 = [(pp[0] - prev.p[0]) / L, (pp[1] - prev.p[1]) / L];
-            const mid: P2 = [(pp[0] + prev.p[0]) / 2, (pp[1] + prev.p[1]) / 2];
-            const hm = (h + prev.h) / 2;
-            // ネット（下 0.9m から吊りワイヤーまで）。上の辺はワイヤーのたわみに合わせて斜めに
-            const net = new CrossSection([ccw([[-L / 2, 0.9], [L / 2, 0.9], [L / 2, h], [-L / 2, prev.h]])], 'Positive');
-            netSolids.push(place(net, mid, 0, tt, -0.015, 0.03));
-            netWire.push(place(new CrossSection([ccw([[-L / 2 - 0.02, prev.h - 0.025], [L / 2 + 0.02, h - 0.025], [L / 2 + 0.02, h + 0.025], [-L / 2 - 0.02, prev.h + 0.025]])], 'Positive'), mid, 0, tt, -0.03, 0.06));
-            // 横に張った細いワイヤー（ネットの補強・3m おき）
-            for (const z of [3.9, 6.9, 9.9]) if (z < Math.min(h, prev.h) - 0.3) netWire.push(place(rect(L + 0.02, 0.03), mid, z, tt, -0.02, 0.04));
-            void hm;
-          }
-          prev = { p: pp, h };
-        }
-      }
-      for (const a of POLES) {
+      const cable = (a: [number, number, number], b: [number, number, number], r: number) =>
+        Manifold.hull([
+          [a[0] - r, a[1] - r, a[2] - r], [a[0] + r, a[1] + r, a[2] + r], [a[0] - r, a[1] + r, a[2]], [a[0] + r, a[1] - r, a[2]],
+          [b[0] - r, b[1] - r, b[2] - r], [b[0] + r, b[1] + r, b[2] + r], [b[0] - r, b[1] + r, b[2]], [b[0] + r, b[1] - r, b[2]],
+        ]);
+      // ネットの端（ダッグアウトの本塁寄りの端あたり）
+      const SPAN = 100;
+      const samples: { p: P2; f: number }[] = [];
+      for (let a = 180 - SPAN; a <= 180 + SPAN + 1e-6; a += 2.5) {
         const pp = netAt(a);
-        if (!pp) continue;
-        // 鋼管柱（下が太い）と頭の金具
-        netSteel.push(Manifold.cylinder(HP - 0.9, 0.2, 0.13, 16).translate([pp[0], pp[1], 0.9]));
-        netSteel.push(Manifold.cylinder(0.25, 0.22, 0.22, 16).translate([pp[0], pp[1], HP - 0.25]));
+        if (pp) samples.push({ p: pp, f: (a - (180 - SPAN)) / (2 * SPAN) });
+      }
+      const HT = 24.0; // 柱の所のワイヤーの高さ
+      const SAG = 3.5; // 真ん中のたわみ
+      const hOf = (f: number) => HT - SAG * 4 * f * (1 - f);
+      const netSolids: Mf[] = [];
+      const netWire: Mf[] = [];
+      const netSteel: Mf[] = [];
+      for (let k = 0; k + 1 < samples.length; k++) {
+        const A1 = samples[k];
+        const B1 = samples[k + 1];
+        const L = Math.hypot(B1.p[0] - A1.p[0], B1.p[1] - A1.p[1]);
+        if (L > 6) continue; // フェンスが切れている所（ダッグアウト）
+        const tt: P2 = [(B1.p[0] - A1.p[0]) / L, (B1.p[1] - A1.p[1]) / L];
+        const mid: P2 = [(A1.p[0] + B1.p[0]) / 2, (A1.p[1] + B1.p[1]) / 2];
+        const ha = hOf(A1.f);
+        const hb = hOf(B1.f);
+        netSolids.push(place(new CrossSection([ccw([[-L / 2, 0.9], [L / 2, 0.9], [L / 2, hb], [-L / 2, ha]])], 'Positive'), mid, 0, tt, -0.015, 0.03));
+        netWire.push(cable([A1.p[0], A1.p[1], ha], [B1.p[0], B1.p[1], hb], 0.04)); // 上のワイヤー
+        if (k % 3 === 0) netWire.push(cable([A1.p[0], A1.p[1], 0.9], [A1.p[0], A1.p[1], ha], 0.02)); // 縦のワイヤー
+      }
+      // 端の柱（フェンスの 3m 外・高さ 27m）と、本塁裏の屋根から吊る斜めのワイヤー
+      const roofAnchor = at(rot(cf, 180), 58);
+      const RZ = 27.5;
+      for (const e of [samples[0], samples[samples.length - 1]]) {
+        if (!e) continue;
+        const dx = e.p[0] - home[0];
+        const dy = e.p[1] - home[1];
+        const dl2 = Math.hypot(dx, dy);
+        const pp: P2 = [e.p[0] + (dx / dl2) * 3, e.p[1] + (dy / dl2) * 3];
+        netSteel.push(Manifold.cylinder(27.5, 0.45, 0.25, 20).translate([pp[0], pp[1], 0]));
+        netWire.push(cable([pp[0], pp[1], 27.0], [e.p[0], e.p[1], HT], 0.05));
+        netWire.push(cable([pp[0], pp[1], 27.3], [roofAnchor[0], roofAnchor[1], RZ], 0.05));
+        // 柱を後ろへ引くワイヤー
+        netWire.push(cable([pp[0], pp[1], 27.0], [pp[0] + (dx / dl2) * 14, pp[1] + (dy / dl2) * 14, 8], 0.04));
+      }
+      for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+        const e = samples.reduce((b2, x) => (Math.abs(x.f - f) < Math.abs(b2.f - f) ? x : b2), samples[0]);
+        if (e) netWire.push(cable([e.p[0], e.p[1], hOf(e.f)], [roofAnchor[0], roofAnchor[1], RZ], 0.04));
       }
       add(union(netSolids), 'バックネット（ネット）', 'スタンド', 'net-black');
-      add(union(netWire), 'バックネットの吊りワイヤー', 'スタンド', '#2a2d2e');
+      add(union(netWire), 'バックネットのワイヤー', 'スタンド', '#2a2d2e');
       add(union(netSteel), 'バックネットの柱', 'スタンド', 'steel-white');
+      console.log('backnet samples', samples.length);
       // ネクストバッターズサークル（直径 1.52m）: 本塁とダッグアウトの間
       const odc: Mf[] = [];
       const odcRing: Mf[] = [];
@@ -792,7 +804,8 @@ const main = async () => {
         const pts = ringF.filter((p) => Math.hypot(p[0] - home[0], p[1] - home[1]) > 85 && angOf(p) < 35.2 && angOf(p) > -44.5).sort((a2, b2) => angOf(b2) - angOf(a2));
         const pl = polyline(pts);
         // 写真の並び（白い文字・フェンスの緑の上に直接）
-        const SP = ['福屋', 'キリンビバレッジ', '石窯 タカキベーカリー', '中國新聞', '東洋証券', 'SUZUKI', '大和興産', 'フマキラー', '章栄不動産', 'NOHMI 能美防災', 'ヘルストロン', 'ベッセルホテルズ', 'もみじ にしき堂', '広島ガス'];
+        // レフト側（左）→ ライト側（右）の順（写真のパノラマ）
+        const SP = ['SUNSTAR', 'クマヒラ', 'ユウベル', '福屋', 'キリンビバレッジ', '石窯 タカキベーカリー', 'BAKURAO', 'フマキラー', '中國新聞', '東洋証券', 'SUZUKI', '大和興産', '五洋建設', 'DUSKIN', '章栄不動産', 'NOHMI 能美防災', 'ヘルストロン'];
         let k = 0;
         let s2 = 3;
         while (s2 < pl.len - 3) {
