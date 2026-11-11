@@ -27,7 +27,7 @@ EOF
 # 3. 画像とプレゼン資料
 [ -d "$W/e2e/node_modules/playwright-core" ] || (cd "$W/e2e" && echo '{"name":"e2e","private":true,"type":"module"}' > package.json && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright-core@1.56 > /dev/null 2>&1)
 cp scripts/stadium/render/*.mjs "$W/e2e/"
-[ -d dist ] || npm run build > /dev/null 2>&1
+npm run build > /dev/null 2>&1 # 新しい材料などを画像に反映するため毎回作り直す
 curl -s localhost:4173 > /dev/null || { (nohup npx vite preview --port 4173 --strictPort > /dev/null 2>&1 &); sleep 6; }
 (cd "$W/e2e" && timeout 3000 node stadium3.mjs "$W/stadium_c.3dcad" "$OUT" export > "$OUT/log.txt" 2>&1)
 tail -1 "$OUT/log.txt"

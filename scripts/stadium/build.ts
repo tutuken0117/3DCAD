@@ -518,7 +518,7 @@ const main = async () => {
   add(union(seatBlocks), '座席（赤）', 'スタンド', 'paint-red');
   add(union(frontFences), 'スタンド前面のフェンス（濃い緑）', 'スタンド', '#3a5b56');
   add(union(tatami), '鯉桟敷（畳・掘りごたつ）', 'スタンド', (n) => (n.z > 0.5 ? 'tatami' : 'wood-light'));
-  for (const t of terraces) add(union(t.solids), t.name, 'スタンド', (n) => (n.z > 0.5 ? 'deck' : 'wood-walnut'));
+  for (const t of terraces) add(union(t.solids), t.name, 'スタンド', (n) => (n.z > 0.5 ? 'deck' : '#3a5b56')); // 段の立ち上がりはフェンスと同じ濃い緑
 
   // ---- 砂かぶり席（グラウンドの高さ・正面と一・三塁側）とダッグアウト ----
   {
@@ -764,8 +764,11 @@ const main = async () => {
           if (Math.abs(angOf(p)) < 7) continue; // バックスクリーンの前（打者の目の前）は広告なし
           // 実物は緑のフェンスに白い文字だけ（板なし）
           const [txt] = SP[k++ % SP.length];
-          const tc = textCs(txt, 0.75, 6.5);
-          if (tc) pushDeco('外野フェンスの広告（白文字）', 'white', place(tc, p, 2.1, t, 0.01, 0.02));
+          // 曲がったフェンスに沿わせて 1 文字ずつ（板にするとフェンスにめり込む）
+          const gs = glyphs(txt);
+          const adv = gs.reduce((a, g) => a + g.adv, 0);
+          textAlong(pl, s2, 1.8, Math.min(1.0, 6.5 / Math.max(adv, 0.1)), txt, 0.01, 0.02, '外野フェンスの広告（白文字）', 'white');
+          void t;
         }
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
       }
