@@ -308,8 +308,8 @@ const main = async () => {
   let lfPit: Cs | null = null;
   let podiumPit: Cs | null = null;
   const FC: [number, number] = [home[0] + cf[0] * 45, home[1] + cf[1] * 45]; // フィールドの中心付近
-  // グラウンドのすぐ外（芝のふちから 14m 以内）にあって、グラウンドの方を向いた低い縦の面
-  const fieldRings = pitchCs.offset(14, 'Round', 2, 64).toPolygons();
+  // グラウンドのすぐ外（芝のふちから 20m 以内）にあって、グラウンドの方を向いた低い縦の面
+  const fieldRings = pitchCs.offset(20, 'Round', 2, 64).toPolygons();
   const nearField = (x: number, y: number) => fieldRings.some((r) => {
     let ins = false;
     for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
@@ -720,7 +720,7 @@ const main = async () => {
         netWire.push(cable([A1.p[0], A1.p[1], ha], [B1.p[0], B1.p[1], hb], 0.04)); // 上のワイヤー
         if (k % 3 === 0) netWire.push(cable([A1.p[0], A1.p[1], 0.9], [A1.p[0], A1.p[1], ha], 0.02)); // 縦のワイヤー
       }
-      // 端の柱（フェンスの 3m 外・高さ 27m）と、本塁裏の屋根から吊る斜めのワイヤー
+      // 端の柱（フェンスの 9m 外のスタンドの中・高さ 27m）と、本塁裏の屋根から吊る斜めのワイヤー
       const roofAnchor = at(rot(cf, 180), 58);
       const RZ = 27.5;
       for (const e of [samples[0], samples[samples.length - 1]]) {
@@ -728,7 +728,7 @@ const main = async () => {
         const dx = e.p[0] - home[0];
         const dy = e.p[1] - home[1];
         const dl2 = Math.hypot(dx, dy);
-        const pp: P2 = [e.p[0] + (dx / dl2) * 3, e.p[1] + (dy / dl2) * 3];
+        const pp: P2 = [e.p[0] + (dx / dl2) * 9, e.p[1] + (dy / dl2) * 9]; // スタンドの中（ベンチの後ろ）
         netSteel.push(Manifold.cylinder(27.5, 0.45, 0.25, 20).translate([pp[0], pp[1], 0]));
         netWire.push(cable([pp[0], pp[1], 27.0], [e.p[0], e.p[1], HT], 0.05));
         netWire.push(cable([pp[0], pp[1], 27.3], [roofAnchor[0], roofAnchor[1], RZ], 0.05));
