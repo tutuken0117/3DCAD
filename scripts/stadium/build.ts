@@ -319,10 +319,10 @@ const main = async () => {
     return ins;
   });
   const fieldRings = pitchCs.offset(20, 'Round', 2, 64).toPolygons();
-  const playRings = pitchCs.offset(6, 'Round', 2, 64).toPolygons(); // 芝＋土（ファウル地域を含む）
-  // 面の 8m 前がグラウンドの中なら、グラウンドから見える面（横を向いたスタンドの端の壁も含む）
+  const playRings = pitchCs.offset(10, 'Round', 2, 64).toPolygons(); // 芝＋土・ウォーニングトラック（ポール際の角を含む）
+  // 面の 4m 前がグラウンド（芝から 10m 以内）なら、グラウンドから見える面（横を向いたスタンドの端の壁も含む）
   const fieldWall = (nn: Vector3, cc: Vector3) =>
-    Math.abs(nn.z) < 0.3 && cc.z < 6 && inRings(fieldRings, cc.x, cc.y) && inRings(playRings, cc.x + nn.x * 8, cc.y + nn.y * 8);
+    Math.abs(nn.z) < 0.3 && cc.z < 6 && inRings(fieldRings, cc.x, cc.y) && inRings(playRings, cc.x + nn.x * 4, cc.y + nn.y * 4);
   const azOf = (p: [number, number]) => ((Math.atan2(p[0] - home[0], p[1] - home[1]) * 180) / Math.PI + 360) % 360; // 本塁からの方位（北 0・時計回り）
   const angDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
   const put = (id: string, x: number, y: number, z: number, rotDeg: number, layer = '家具') => {
