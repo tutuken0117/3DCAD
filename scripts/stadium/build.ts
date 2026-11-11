@@ -530,7 +530,13 @@ const main = async () => {
   // 名前のある席の名前を、その区画に付ける
   const named = seatsAll.filter((x) => x.it.tags.name).map((x) => x.it.tags.name);
   console.log('named seats', named);
-  add(union(treads), '観客席の段（コンクリート）', 'スタンド', (n, c) => (n.z > 0.5 ? 'mortar-gray' : fieldWall(n, c) && c.z < 2.0 ? '#3a5b56' : 'concrete'));
+  add(union(treads), '観客席の段（コンクリート）', 'スタンド', (n, c) => {
+    if (n.z > 0.5) return 'mortar-gray';
+    if (!fieldWall(n, c)) return 'concrete';
+    // 前を向いた立ち上がりは最前列だけ、横を向いた面（スタンドの端の壁・写真では緑の壁）は高さ 6m まで
+    const toF = (n.x * (FC[0] - c.x) + n.y * (FC[1] - c.y)) / Math.hypot(FC[0] - c.x, FC[1] - c.y);
+    return c.z < 2.0 || toF < 0.5 ? '#3a5b56' : 'concrete';
+  });
   add(union(seatBlocks), '座席（赤）', 'スタンド', 'paint-red');
   add(union(frontFences), 'スタンド前面のフェンス（濃い緑）', 'スタンド', '#3a5b56');
   add(union(tatami), '鯉桟敷（畳・掘りごたつ）', 'スタンド', (n) => (n.z > 0.5 ? 'tatami' : 'wood-light'));
