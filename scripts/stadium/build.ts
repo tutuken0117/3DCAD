@@ -367,7 +367,7 @@ const main = async () => {
     const tsol: Mf[] = [];
     // グラウンドに面した 1 階スタンドは、前面を濃い緑のフェンスにする（地図データの壁の色 #3a5b56）
     const outfieldStand = Math.abs(((s.az - azOf(at(cf, 50)) + 540) % 360) - 180) < 47 && s.dist > 85;
-    const hasFence = mode === 'seats' && s.z0 < 1 && !outfieldStand; // 地図データに色がない区画（両翼のファウル側）も同じ濃い緑に
+    const hasFence = (mode === 'seats' || mode === 'terrace') && s.z0 < 1 && !outfieldStand; // 地図データに色がない区画（両翼のファウル側）も同じ濃い緑に
     if (hasFence) {
       const fb = s.c.intersect(band(d, s0 + L - 0.3, s0 + L + 1));
       if (!fb.isEmpty()) frontFences.push(ext(fb, s.z0, s.h - s.rh + 0.45));
