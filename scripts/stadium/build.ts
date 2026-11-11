@@ -1315,7 +1315,10 @@ const main = async () => {
       add(union(flagPoles), 'スコアボード上の旗竿', '広告・看板', 'steel-white');
       // 裏側（球場の外・東向き）の看板（写真）: 灰色の板に「mazda」「ようこそ、ときめく広島へ。」と斜体の球場名 3 段、上に照明
       {
-        const offB = Math.min(...ring.map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1])); // 裏の面（負）
+        const offB0 = Math.min(...ring.map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1])); // 裏の面（負）
+        // 上の段の裏（r8829181）はさらに後ろへ出ているので、看板はいちばん後ろの面にそろえ、その間は灰色の板でふさぐ
+        const back2 = partItems.find((i) => i.id === 'r8829181');
+        const offB = Math.min(offB0, ...(back2 ? back2.outer![0].map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1]) : []));
         const tB: P2 = [-t[0], -t[1]]; // 裏から見て右向き
         const SB = (s2: number): P2 => [A0[0] + t[0] * s2 + n[0] * offB, A0[1] + t[1] * s2 + n[1] * offB];
         const bp = (s0: number, s1: number, z0: number, z1: number, off: number, th: number, name: string, color: string) =>
@@ -1330,7 +1333,8 @@ const main = async () => {
           cs = cs.translate([-(b.min[0] + b.max[0]) / 2, -(b.min[1] + b.max[1]) / 2]).scale(k);
           pushDeco('スコアボード裏の看板（白文字）', color, place(cs, SB(sc), zc, tB, 0.08, 0.03));
         };
-        bp(0, L, Z0, Z1, 0, 0.06, 'スコアボード裏の看板（灰色）', '#6b6f73');
+        pushDeco('スコアボード裏の看板（灰色）', '#6b6f73', place(rect(L, Z1 - Z0), [A0[0] + t[0] * (L / 2) + n[0] * offB0, A0[1] + t[1] * (L / 2) + n[1] * offB0], (Z0 + Z1) / 2, tB, 0, offB0 - offB + 0.06));
+        void bp;
         const mid = L / 2;
         bt('ようこそ、ときめく広島へ。', mid + 2, Z1 - 1.4, 1.3, 30, 'white');
         bt('mazda', L - 4.5, Z1 - 1.4, 0.9, 5, 'white');
