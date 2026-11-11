@@ -624,19 +624,19 @@ const main = async () => {
       const NETR = 26;
       const NH = 10.0;
       const netBand = fence.intersect(CrossSection.circle(NETR, 96).translate(home));
-      add(ext(netBand, 0.9, NH), 'バックネット（ネット）', 'スタンド', 'glass-clear');
+      add(ext(netBand, 0.9, NH), 'バックネット（ネット）', 'スタンド', 'net-black');
       const netSteel: Mf[] = [];
-      for (const z of [NH - 0.12, 3.5, 6.2]) netSteel.push(ext(netBand.offset(0.03, 'Round'), z, z + 0.12));
+      netSteel.push(ext(netBand.offset(0.01, 'Round'), NH - 0.05, NH)); // 上のワイヤー
       // 支柱: 本塁から見た向きごとに、ネットの帯に当たる所
       const keepO = keep.offset(0.06, 'Round');
-      for (let a = 180 - 84; a <= 180 + 84; a += 7) {
+      for (let a = 180 - 84; a <= 180 + 84; a += 21) {
         const dd = rot(cf, a);
         let r = 8;
         while (r < NETR && !pointIn(keepO, at(dd, r))) r += 0.4;
         if (r >= NETR) continue;
         while (r > 6 && pointIn(keepO, at(dd, r - 0.05))) r -= 0.05;
         const pp = at(dd, r - 0.02);
-        netSteel.push(Manifold.cylinder(NH + 0.3 - 0.9, 0.12, 0.12, 12).translate([pp[0], pp[1], 0.9]));
+        netSteel.push(Manifold.cylinder(NH + 0.3 - 0.9, 0.06, 0.06, 10).translate([pp[0], pp[1], 0.9]));
       }
       add(union(netSteel), 'バックネットの支柱・梁', 'スタンド', '#2a2d2e');
       // ネクストバッターズサークル（直径 1.52m）: 本塁とダッグアウトの間
@@ -762,8 +762,10 @@ const main = async () => {
         for (let s2 = 6; s2 < pl.len - 4; s2 += 9.5) {
           const { p, t } = pl.at(s2);
           if (Math.abs(angOf(p)) < 7) continue; // バックスクリーンの前（打者の目の前）は広告なし
-          const [txt, bg, fg] = SP[k++ % SP.length];
-          adBoard(p, 2.0, t, 7.0, 1.5, bg, fg, txt, 0.02, '外野フェンスの広告');
+          // 実物は緑のフェンスに白い文字だけ（板なし）
+          const [txt] = SP[k++ % SP.length];
+          const tc = textCs(txt, 0.75, 6.5);
+          if (tc) pushDeco('外野フェンスの広告（白文字）', 'white', place(tc, p, 2.1, t, 0.01, 0.02));
         }
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
       }
