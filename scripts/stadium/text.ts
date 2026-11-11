@@ -34,8 +34,8 @@ const toRings = (cmds: any[]): Ring[] => {
       cur.push([c.x, -c.y]);
       x = c.x; y = c.y;
     } else if (c.type === 'Q') {
-      for (let k = 1; k <= 4; k++) {
-        const t = k / 4;
+      for (let k = 1; k <= 2; k++) {
+        const t = k / 2;
         const a = (1 - t) ** 2;
         const b = 2 * (1 - t) * t;
         const d = t * t;
@@ -43,8 +43,8 @@ const toRings = (cmds: any[]): Ring[] => {
       }
       x = c.x; y = c.y;
     } else if (c.type === 'C') {
-      for (let k = 1; k <= 5; k++) {
-        const t = k / 5;
+      for (let k = 1; k <= 3; k++) {
+        const t = k / 3;
         const a = (1 - t) ** 3;
         const b = 3 * (1 - t) ** 2 * t;
         const e = 3 * (1 - t) * t * t;

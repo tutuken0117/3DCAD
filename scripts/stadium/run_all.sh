@@ -38,9 +38,9 @@ p = sys.argv[1] + '/マツダスタジアム.3dcad'
 d = json.load(open(p))
 for l in d['model']['layers']:
     l['visible'] = True
-# 座標は 0.1mm に丸める（ファイルを小さく）
+# 座標は 1mm に丸める（ファイルを小さく）
 for v in d['model']['vertices']:
-    v[1:4] = [round(c, 4) for c in v[1:4]]
+    v[1:4] = [round(c, 3) for c in v[1:4]]
 d['camera'] = {'position': d['scenes'][0]['position'], 'target': d['scenes'][0]['target']}
 json.dump(d, open(p, 'w'), ensure_ascii=False, separators=(',', ':'))
 EOF
