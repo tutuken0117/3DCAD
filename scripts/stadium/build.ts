@@ -1093,7 +1093,9 @@ const main = async () => {
   {
     const gate = partItems.find((i) => i.id === 'r8880509');
     if (gate) {
-      const pts = gate.outer![0].filter((p) => p[0] < -109 && p[1] > -12 && p[1] < 7).sort((a2, b2) => b2[1] - a2[1]) as P2[];
+      // 外側（西向き）の面: 輪のうち、同じ高さ（y）で一番西の点。北から南へ（西から見て左から右）
+      const ringG = gate.outer![0];
+      const pts = ringG.filter((p) => !ringG.some((q2) => Math.abs(q2[1] - p[1]) < 2.5 && q2[0] < p[0] - 0.8)).sort((a2, b2) => b2[1] - a2[1]) as P2[];
       if (pts.length > 2) {
         const pl = polyline(pts);
         textAlong(pl, pl.len / 2, 11.6, 1.7, 'MAZDA Zoom-Zoom', 0.02, 0.15, '正面入口の球場名', 'white');
