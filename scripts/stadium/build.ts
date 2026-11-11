@@ -9,6 +9,7 @@ import { Vector3 } from 'three';
 import { Model } from '../../src/core/Model';
 import { meshToFaces } from '../../src/core/meshToFaces';
 import { getFurniture, placeFurniture } from '../../src/core/furniture';
+import { glyphs, textRings } from './text';
 
 type Item = { id: string; tags: Record<string, string>; outer?: [number, number][][]; inner?: [number, number][][]; line?: [number, number][] | null; point?: [number, number] };
 const [src, src2, out] = process.argv.slice(2);
@@ -63,6 +64,74 @@ const main = async () => {
       const n = model.faceNormal(f);
       const r = typeof rule === 'string' ? rule : rule(new Vector3(n.x, -n.z, n.y), new Vector3(c.x, -c.z, c.y));
       f.color = r.startsWith('#') ? r : 'mat:' + r;
+    }
+  };
+
+  // ---- 文字・広告の板 ----
+  type P2 = [number, number];
+  const deg = (r: number) => (r * 180) / Math.PI;
+  /** t = 見る人から見て右向き。表（見る人の側）は n = (t1, -t0) */
+  const nOf = (t: P2): P2 => [t[1], -t[0]];
+  const deco = new Map<string, Mf[]>();
+  const pushDeco = (name: string, color: string, s: Mf | null) => {
+    if (!s || s.isEmpty()) return;
+    const k = name + '|' + color;
+    if (!deco.has(k)) deco.set(k, []);
+    deco.get(k)!.push(s);
+  };
+  /** 平面の形 cs（x 右・y 上）を、点 p・高さ zc に、右向き t の壁へ貼る（壁から off 離し、厚さ th） */
+  const place = (cs: Cs, p: P2, zc: number, t: P2, off: number, th: number): Mf => {
+    const n = nOf(t);
+    return cs.extrude(th).rotate([90, 0, 0]).rotate([0, 0, deg(Math.atan2(t[1], t[0]))]).translate([p[0] + n[0] * off, p[1] + n[1] * off, zc]);
+  };
+  /** 1 行の文字（中心が原点）。字の高さ size、幅は maxW まで */
+  const textCs = (s: string, size: number, maxW = 1e9): Cs | null => {
+    const r = textRings(s);
+    if (!r || !r.rings.length) return null;
+    const cs = new CrossSection(r.rings, 'NonZero');
+    if (cs.isEmpty()) return null;
+    const b = cs.bounds();
+    const w = b.max[0] - b.min[0];
+    const hh = b.max[1] - b.min[1];
+    const k = Math.min(size / hh, maxW / w);
+    return cs.translate([-(b.min[0] + b.max[0]) / 2, -(b.min[1] + b.max[1]) / 2]).scale(k);
+  };
+  const rect = (w: number, h: number) => CrossSection.square([w, h], true);
+  /** 広告の板（背景色 bg・文字色 fg） */
+  const adBoard = (p: P2, zc: number, t: P2, w: number, h: number, bg: string, fg: string, text: string, off = 0.02, name = '広告') => {
+    pushDeco(name, bg, place(rect(w, h), p, zc, t, off, 0.05));
+    const tc = textCs(text, h * 0.6, w * 0.86);
+    if (tc) pushDeco(name + 'の文字', fg, place(tc, p, zc, t, off + 0.05, 0.02));
+  };
+  /** 折れ線（壁の前のふち）。at(s) で位置と向き */
+  const polyline = (pts: P2[]) => {
+    const L = [0];
+    for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const len = L[L.length - 1];
+    const at = (s: number): { p: P2; t: P2 } => {
+      let i = 1;
+      while (i < pts.length - 1 && L[i] < s) i++;
+      const a = pts[i - 1];
+      const b = pts[i];
+      const l = Math.max(1e-6, L[i] - L[i - 1]);
+      const f = (s - L[i - 1]) / l;
+      return { p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] };
+    };
+    return { pts, len, at };
+  };
+  /** 曲がった壁に沿わせて 1 文字ずつ貼る（ベースラインの高さ z0、字の大きさ size） */
+  const textAlong = (pl: ReturnType<typeof polyline>, sMid: number, z0: number, size: number, str: string, off: number, th: number, name: string, color: string) => {
+    const gs = glyphs(str);
+    const W = gs.reduce((a, g) => a + g.adv, 0) * size;
+    let s = sMid - W / 2;
+    for (const g of gs) {
+      const sc = s + (g.adv * size) / 2;
+      s += g.adv * size;
+      if (!g.rings.length) continue;
+      const cs = new CrossSection(g.rings, 'NonZero').translate([-g.adv / 2, 0]).scale(size);
+      if (cs.isEmpty()) continue;
+      const { p, t } = pl.at(sc);
+      pushDeco(name, color, place(cs, p, z0, t, off, th));
     }
   };
 
@@ -191,13 +260,45 @@ const main = async () => {
     const outer = new CrossSection([ccw(pts)], 'Positive');
     return outer.subtract(outer.offset(-0.075, 'Square')).extrude(0.01);
   };
-  add(Manifold.union([bags, plate, boxL(1), boxL(-1)]), 'ベース・ホームプレート・バッターボックス', 'グラウンド', 'white');
+  // 本塁まわりの座標（a: 投手の方へ、b: 三塁側へ）で長方形
+  const PR = (a0: number, a1: number, b0: number, b1: number) =>
+    new CrossSection([ccw([[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b2]) => [home[0] + ux[0] * a + uy[0] * b2, home[1] + ux[1] * a + uy[1] * b2] as [number, number]))], 'Positive');
+  /** 2 点を結ぶ幅 w の白線 */
+  const seg = (p0: P2, p1: P2, w = 0.075) => {
+    const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    const tx = (p1[0] - p0[0]) / L;
+    const ty = (p1[1] - p0[1]) / L;
+    const nx = -ty * w / 2;
+    const ny = tx * w / 2;
+    return new CrossSection([ccw([[p0[0] + nx, p0[1] + ny], [p1[0] + nx, p1[1] + ny], [p1[0] - nx, p1[1] - ny], [p0[0] - nx, p0[1] - ny]])], 'Positive');
+  };
+  // キャッチャーボックス: 幅 43 インチ（1.09m）、バッターボックスの後ろの線から 8 フィート（2.44m）
+  const aBack = -0.915 + 0.216;
+  const cb = 1.092 / 2;
+  const catcherBox = CrossSection.union([
+    PR(aBack - 2.44, aBack, cb - 0.075, cb),
+    PR(aBack - 2.44, aBack, -cb, -cb + 0.075),
+    PR(aBack - 2.44, aBack - 2.44 + 0.075, -cb, cb),
+  ]).extrude(0.01);
+  add(Manifold.union([bags, plate, boxL(1), boxL(-1), catcherBox]), 'ベース・ホームプレート・バッターボックス・キャッチャーボックス', 'グラウンド', 'white');
   const lineTo = (dir: [number, number], len: number) => {
     const L2 = len;
     const ang = (Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
     return Manifold.cube([L2, 0.1, 0.02]).translate([0, -0.05, 0.005]).rotate([0, 0, ang]).translate([home[0], home[1], 0]);
   };
-  add(Manifold.union([lineTo(d1, 100), lineTo(d3, 101)]), 'ファウルライン', 'グラウンド', 'white');
+  // ファウルラインはバッターボックスの中とホームプレートの所には引かない
+  const boxesSolid = ext(CrossSection.union([PR(-0.699, 1.131, 0.368, 1.588), PR(-0.699, 1.131, -1.588, -0.368), PR(-0.1, 0.5, -0.3, 0.3)]), -1, 1);
+  add(Manifold.union([lineTo(d1, 100), lineTo(d3, 101)]).subtract(boxesSolid), 'ファウルライン', 'グラウンド', 'white');
+  // コーチャーボックス（塁線から 15 フィート＝4.57m 外、長さ 20 フィート＝6.1m、本塁側の端に 10 フィート＝3.05m の線）
+  // スリーフットライン（一塁線の外 3 フィート＝0.914m、本塁から 45 フィート＝13.72m〜一塁）
+  const marks: Cs[] = [];
+  for (const [dl2, sg] of [[d1, -90], [d3, 90]] as [P2, number][]) {
+    const f = rot(dl2, sg); // 塁線からファウル地域の方
+    const P = (a: number, o: number): P2 => [home[0] + dl2[0] * a + f[0] * o, home[1] + dl2[1] * a + f[1] * o];
+    marks.push(seg(P(19.8, 4.57), P(25.9, 4.57)), seg(P(19.8, 4.57), P(19.8, 7.62)));
+    if (sg < 0) marks.push(seg(P(13.72, 0.914), P(B, 0.914)), seg(P(13.72, 0), P(13.72, 0.914)));
+  }
+  add(ext(CrossSection.union(marks), 0, 0.01), 'コーチャーボックス・スリーフットライン', 'グラウンド', 'white');
   // ファウルポール（黄）
   add(Manifold.union([Manifold.cylinder(25, 0.3, 0.3, 12).translate([...at(d1, 100.4), 0]), Manifold.cylinder(25, 0.3, 0.3, 12).translate([...at(d3, 101.4), 0])]), 'ファウルポール', 'グラウンド', 'paint-yellow');
   console.log('home', home, 'cf', cf);
@@ -266,7 +367,7 @@ const main = async () => {
     const tsol: Mf[] = [];
     // グラウンドに面した 1 階スタンドは、前面を濃い緑のフェンスにする（地図データの壁の色 #3a5b56）
     const outfieldStand = Math.abs(((s.az - azOf(at(cf, 50)) + 540) % 360) - 180) < 47 && s.dist > 85;
-    const hasFence = mode === 'seats' && s.z0 < 1 && s.it.tags['building:colour'] === '#3a5b56' && !outfieldStand;
+    const hasFence = mode === 'seats' && s.z0 < 1 && !outfieldStand; // 地図データに色がない区画（両翼のファウル側）も同じ濃い緑に
     if (hasFence) {
       const fb = s.c.intersect(band(d, s0 + L - 0.3, s0 + L + 1));
       if (!fb.isEmpty()) frontFences.push(ext(fb, s.z0, s.h - s.rh + 0.45));
@@ -519,7 +620,41 @@ const main = async () => {
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
       add(ext(fence, -0.9, 0.9), '砂かぶり席の前のフェンス（グラウンドから 0.9m）', 'スタンド', '#3a5b56');
-      add(ext(fence.intersect(CrossSection.circle(24, 64).translate(home)), 0.9, 4.0), 'バックネット', 'スタンド', 'glass-clear');
+      // バックネット: 砂かぶり席の前のフェンスの上に高さ 10m のネット。黒い支柱（約 5m おき）と上の梁・中間のワイヤー
+      const NETR = 26;
+      const NH = 10.0;
+      const netBand = fence.intersect(CrossSection.circle(NETR, 96).translate(home));
+      add(ext(netBand, 0.9, NH), 'バックネット（ネット）', 'スタンド', 'glass-clear');
+      const netSteel: Mf[] = [];
+      for (const z of [NH - 0.12, 3.5, 6.2]) netSteel.push(ext(netBand.offset(0.03, 'Round'), z, z + 0.12));
+      // 支柱: 本塁から見た向きごとに、ネットの帯に当たる所
+      const keepO = keep.offset(0.06, 'Round');
+      for (let a = 180 - 84; a <= 180 + 84; a += 7) {
+        const dd = rot(cf, a);
+        let r = 8;
+        while (r < NETR && !pointIn(keepO, at(dd, r))) r += 0.4;
+        if (r >= NETR) continue;
+        while (r > 6 && pointIn(keepO, at(dd, r - 0.05))) r -= 0.05;
+        const pp = at(dd, r - 0.02);
+        netSteel.push(Manifold.cylinder(NH + 0.3 - 0.9, 0.12, 0.12, 12).translate([pp[0], pp[1], 0.9]));
+      }
+      add(union(netSteel), 'バックネットの支柱・梁', 'スタンド', '#2a2d2e');
+      // ネクストバッターズサークル（直径 1.52m）: 本塁とダッグアウトの間
+      const odc: Mf[] = [];
+      const odcRing: Mf[] = [];
+      for (const [dl2, sgn] of [[d1, 1], [d3, -1]] as [P2, number][]) {
+        const out2 = rot(dl2, sgn * -90);
+        const base0 = at(dl2, 9);
+        let t = 2;
+        while (t < 30 && !inFront([base0[0] + out2[0] * t, base0[1] + out2[1] * t])) t += 0.25;
+        const o = Math.min(t - 0.3, 9.5);
+        const c0: P2 = [base0[0] + out2[0] * o, base0[1] + out2[1] * o];
+        odc.push(Manifold.cylinder(0.01, 0.68, 0.68, 48).translate([c0[0], c0[1], -0.02]));
+        odcRing.push(Manifold.cylinder(0.01, 0.76, 0.76, 48).subtract(Manifold.cylinder(0.03, 0.68, 0.68, 48).translate([0, 0, -0.01])).translate([c0[0], c0[1], -0.02]));
+        console.log('on-deck circle', sgn, o.toFixed(1));
+      }
+      add(union(odc), 'ネクストバッターズサークル', 'グラウンド', '#b3122e');
+      add(union(odcRing), 'ネクストバッターズサークルの白線', 'グラウンド', 'white');
     }
   }
 
@@ -612,6 +747,26 @@ const main = async () => {
         if (!cap.isEmpty()) add(ext(cap, -0.1, 6.0), 'レフトスタンドのセンター側の壁', 'スタンド', '#3a5b56');
       }
       add(ext(fenceSK, 0.25, 1.8), 'フェンスの金網（外野砂かぶり席の前）', 'スタンド', 'glass-clear');
+      // ---- 外野フェンスの広告（写真の並び: SUNSTAR GUM・クマヒラ・ユウベル・福屋・キリンビバレッジ…）----
+      {
+        const ringF = offPitch(WT).toPolygons().sort((a2, b2) => b2.length - a2.length)[0];
+        const angOf = (p: P2) => deg(Math.atan2(cf[0] * (p[1] - home[1]) - cf[1] * (p[0] - home[0]), cf[0] * (p[0] - home[0]) + cf[1] * (p[1] - home[1])));
+        const pts = ringF.filter((p) => Math.hypot(p[0] - home[0], p[1] - home[1]) > 85 && angOf(p) < 35.2 && angOf(p) > -44.5).sort((a2, b2) => angOf(b2) - angOf(a2));
+        const pl = polyline(pts);
+        const SP: [string, string, string][] = [
+          ['SUNSTAR GUM', '#d7000f', 'white'], ['クマヒラ', 'white', '#003f8e'], ['ユウベル', '#0068b7', 'white'], ['福屋', 'white', '#c8102e'],
+          ['キリンビバレッジ', '#e60012', 'white'], ['中国電力', 'white', '#0067b0'], ['三井住友海上', 'white', '#00843d'], ['広島銀行', '#d70c18', 'white'],
+          ['広島ガス', '#0067b0', 'white'], ['アサヒビール', '#1b1b1b', 'white'], ['CGC', '#00913a', 'white'], ['千福', '#1a1a1a', '#f5d300'],
+        ];
+        let k = 0;
+        for (let s2 = 6; s2 < pl.len - 4; s2 += 9.5) {
+          const { p, t } = pl.at(s2);
+          if (Math.abs(angOf(p)) < 7) continue; // バックスクリーンの前（打者の目の前）は広告なし
+          const [txt, bg, fg] = SP[k++ % SP.length];
+          adBoard(p, 2.0, t, 7.0, 1.5, bg, fg, txt, 0.02, '外野フェンスの広告');
+        }
+        console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
+      }
       // ② 外野スタンド（2 層目）
       const Stand = offPitch(F0 + 40).subtract(offPitch(F0)).intersect(LFW).intersect(fieldOfRear);
       const tr: Mf[] = [];
@@ -675,6 +830,19 @@ const main = async () => {
       const bandFront = bandC.subtract(bandC.translate([-u[0] * 0.25, -u[1] * 0.25]));
       add(ext(bandFront, 6.0, T3), 'レフトスタンドの広告の帯（千福・中国電力・CGC…）', 'スタンド', 'white');
       add(ext(bandFront, T3, T3 + 1.1), 'プレミアムテラスの前面ガラス', 'スタンド', 'glass-clear');
+      {
+        // 帯の広告の文字（千福・中国電力・CGC…）
+        const BA: [string, string][] = [['千福', '#1a1a1a'], ['中国電力', '#0067b0'], ['CGC', '#00913a'], ['広島ガス', '#0067b0'], ['アサヒスーパードライ', '#c8102e'], ['もみじ銀行', '#e4007f']];
+        const tq: P2 = [-u[1], u[0]];
+        let k = 0;
+        for (let t = qMin + 4; t < qMax - 3; t += 8.5) {
+          const p: P2 = [u[0] * sF + tq[0] * t, u[1] * sF + tq[1] * t];
+          if (!pointIn(bandC, [p[0] - u[0] * 0.1, p[1] - u[1] * 0.1])) continue;
+          const [txt, col] = BA[k++ % BA.length];
+          const tc = textCs(txt, 0.9, 7.0);
+          if (tc) pushDeco('レフトスタンドの帯の広告', col, place(tc, p, (6.0 + T3) / 2, tq, 0.005, 0.03));
+        }
+      }
       // プレミアムテラス（クッション付きシート 2 列）とコージーテラス（2 段の木製ベンチ・テーブル）
       const ringB = (a: number, b: number) => bandC.intersect(band(u, sF - b, sF - a));
       const pt: Mf[] = [];
@@ -832,6 +1000,111 @@ const main = async () => {
   for (const [key, g] of groups) {
     const name = key.startsWith('屋根') ? '屋根・ひさし' : key.startsWith('建物') ? 'スタンド・コンコース' : key;
     add(union(g.solids), name, g.layer, g.rule);
+  }
+
+  // ---- スコアボード（センター後方・地図データ r8829180 の正面 17.2〜25.7m）----
+  {
+    const sbItem = partItems.find((i) => i.id === 'r8829180');
+    if (sbItem) {
+      const ring = sbItem.outer![0];
+      const c = centroid(sbItem);
+      const l0 = Math.hypot(home[0] - c[0], home[1] - c[1]);
+      const n0: P2 = [(home[0] - c[0]) / l0, (home[1] - c[1]) / l0];
+      const t0: P2 = [-n0[1], n0[0]];
+      const fr = ring.filter((p) => (p[0] - c[0]) * n0[0] + (p[1] - c[1]) * n0[1] > 0).sort((a2, b2) => (a2[0] * t0[0] + a2[1] * t0[1]) - (b2[0] * t0[0] + b2[1] * t0[1]));
+      const A0 = fr[0];
+      const B0 = fr[fr.length - 1];
+      const L = Math.hypot(B0[0] - A0[0], B0[1] - A0[1]);
+      const t: P2 = [(B0[0] - A0[0]) / L, (B0[1] - A0[1]) / L];
+      const n = nOf(t);
+      const off0 = Math.max(0, ...ring.map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1]));
+      const S = (s2: number): P2 => [A0[0] + t[0] * s2, A0[1] + t[1] * s2];
+      const Z0 = 17.2;
+      const Z1 = 25.7;
+      const panel = (s0: number, s1: number, z0: number, z1: number, off: number, th: number, name: string, color: string) =>
+        pushDeco(name, color, place(rect(s1 - s0, z1 - z0), S((s0 + s1) / 2), (z0 + z1) / 2, t, off0 + off, th));
+      const txt = (str: string, sc: number, zc: number, size: number, maxW: number, color: string, name = 'スコアボードの表示') => {
+        const tc = textCs(str, size, maxW);
+        if (tc) pushDeco(name, color, place(tc, S(sc), zc, t, off0 + 0.12, 0.02));
+      };
+      // 枠（濃い緑の箱の正面に黒い縁）
+      panel(0, L, Z0, Z1, 0, 0.05, 'スコアボードの枠', '#1f2a28');
+      // 左端の縦の看板（アサヒビール）
+      panel(0.5, 4.3, Z0 + 0.4, Z1 - 0.4, 0.05, 0.06, 'スコアボードの看板', '#f2f2f2');
+      {
+        const chars = [...'アサヒビール'];
+        const step = (Z1 - Z0 - 1.4) / chars.length;
+        chars.forEach((ch, i) => {
+          let tc = textCs(ch, Math.min(step * 0.8, 1.0), 3.0);
+          if (!tc) return;
+          if (ch === 'ー') tc = tc.rotate(90);
+          pushDeco('スコアボードの看板の文字', '#1a3b8f', place(tc, S(2.4), Z1 - 0.9 - step * (i + 0.5), t, off0 + 0.11, 0.02));
+        });
+      }
+      // 得点板（LED・黒）
+      const LS0 = 4.9;
+      const LS1 = 22.0;
+      panel(LS0, LS1, Z0 + 0.5, Z1 - 0.5, 0.05, 0.06, 'スコアボードの画面（黒）', '#0b0d0e');
+      const colX = (i: number) => LS0 + 4.1 + i * 1.05; // 1〜9 回
+      const rheX = (i: number) => LS0 + 4.1 + 9 * 1.05 + 0.4 + i * 1.15;
+      const rows: [string, string[], string[]][] = [
+        ['巨人', ['0', '0', '1', '0', '0', '0', '0', '0', '0'], ['1', '5', '0']],
+        ['広島', ['2', '0', '0', '0', '1', '0', '0', '0', 'X'], ['3', '8', '0']],
+      ];
+      const zH = Z1 - 1.25;
+      for (let i = 0; i < 9; i++) txt(String(i + 1), colX(i), zH, 0.55, 0.9, 'white');
+      ['R', 'H', 'E'].forEach((ch, i) => txt(ch, rheX(i), zH, 0.55, 0.9, 'white'));
+      rows.forEach(([team, inn, rhe], r) => {
+        const zr = zH - 1.25 * (r + 1);
+        txt(team, LS0 + 1.9, zr, 0.75, 3.2, r === 1 ? '#ff3b3b' : 'white');
+        inn.forEach((v, i) => txt(v, colX(i), zr, 0.75, 0.9, '#ffd400'));
+        rhe.forEach((v, i) => txt(v, rheX(i), zr, 0.75, 1.0, '#ffd400'));
+      });
+      // 区切りの線
+      panel(LS0 + 0.3, LS1 - 0.3, zH - 0.65, zH - 0.6, 0.11, 0.01, 'スコアボードの表示', '#5a6266');
+      // B・S・O のランプ
+      const lamps: [string, string, number][] = [['B', '#22c55e', 3], ['S', '#facc15', 2], ['O', '#ef4444', 2]];
+      lamps.forEach(([ch, col, nl], r) => {
+        const zr = zH - 1.25 * 3 - 0.95 * r - 0.3;
+        txt(ch, LS0 + 1.0, zr, 0.6, 0.8, 'white');
+        for (let k = 0; k < nl; k++) pushDeco('スコアボードのランプ', col, place(CrossSection.circle(0.28, 20), S(LS0 + 2.0 + k * 0.75), zr, t, off0 + 0.11, 0.03));
+      });
+      // 打順（右下）
+      ['1 菊池', '2 野間', '3 小園', '4 末包'].forEach((v, i) => txt(v, LS0 + 9.0 + (i % 2) * 5.4, zH - 1.25 * 3 - 0.4 - Math.floor(i / 2) * 1.0, 0.6, 4.6, 'white'));
+      // メインビジョン（大型映像装置）
+      panel(LS1 + 0.6, L - 0.5, Z0 + 0.5, Z1 - 0.5, 0.05, 0.06, 'スコアボードの画面（黒）', '#0b0d0e');
+      const mvC = (LS1 + 0.6 + L - 0.5) / 2;
+      panel(LS1 + 1.0, L - 0.9, Z0 + 0.9, Z1 - 0.9, 0.11, 0.01, 'メインビジョンの映像', '#13324f');
+      txt('Carp', mvC, Z0 + 4.8, 3.0, 18, '#e60012', 'メインビジョンの映像（文字）');
+      txt('MAZDA Zoom-Zoom スタジアム広島', mvC, Z0 + 1.9, 0.9, 22, 'white', 'メインビジョンの映像（文字）');
+      // 上の看板（一番搾り・東亜地所・youme ゆめタウン）
+      const TOP: [number, number, string, string, string][] = [
+        [0.4, 15.8, 'white', '#c8102e', 'キリン一番搾り'], [16.3, 32.0, '#003d7c', 'white', '東亜地所'], [32.5, L - 0.4, '#e5006e', 'white', 'youme ゆめタウン'],
+      ];
+      for (const [s0, s1, bg, fg, tx] of TOP) adBoard(S((s0 + s1) / 2), Z1 + 1.0, t, s1 - s0, 1.8, bg, fg, tx, off0 - 0.4, 'スコアボード上の看板');
+      // 看板の支え
+      const legs: Mf[] = [];
+      for (let s2 = 2; s2 < L; s2 += 6) legs.push(place(rect(0.25, 2.0), S(s2), Z1 + 0.9, t, off0 - 0.75, 0.3));
+      add(union(legs), 'スコアボード上の看板の支え', '広告・看板', 'steel-white');
+      console.log('scoreboard', L.toFixed(1), off0.toFixed(2));
+    }
+  }
+  // ---- 正面入口（本塁裏・西側）の球場名 ----
+  {
+    const gate = partItems.find((i) => i.id === 'r8880509');
+    if (gate) {
+      const pts = gate.outer![0].filter((p) => p[0] < -109 && p[1] > -12 && p[1] < 7).sort((a2, b2) => b2[1] - a2[1]) as P2[];
+      if (pts.length > 2) {
+        const pl = polyline(pts);
+        textAlong(pl, pl.len / 2, 11.6, 1.7, 'MAZDA Zoom-Zoom', 0.02, 0.15, '正面入口の球場名', 'white');
+        textAlong(pl, pl.len / 2, 8.4, 2.0, 'スタジアム広島', 0.02, 0.15, '正面入口の球場名', 'white');
+        console.log('gate sign', pl.len.toFixed(1));
+      }
+    }
+  }
+  for (const [k, l] of deco) {
+    const [name, color] = k.split('|');
+    add(union(l), name, '広告・看板', color);
   }
 
   // マウンド（芝の内側の穴のうち円いもの）
