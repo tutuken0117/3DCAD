@@ -565,7 +565,6 @@ const main = async () => {
       const dugPole: Mf[] = [];
       const dugChair: Mf[] = [];
       const pressWall: Mf[] = [];
-      const pressGlass: Mf[] = [];
       const pressRoof: Mf[] = [];
       const pressDesk: Mf[] = [];
       const front = CrossSection.union(partItems.filter((i) => (num(i.tags.min_height) ?? 0) < 1 && !i.tags['tower:type']).map((i) => shape(i)).filter((x): x is Cs => !!x)).offset(1.5, 'Round', 2, 64).toPolygons();
@@ -610,22 +609,16 @@ const main = async () => {
         for (const e of [-1, 1]) {
           dugSolids.push(ext(R(1.2, 1.4, e * (LEN / 2 - 0.9), -DEP / 2 + 0.7), FL, FL + 0.3), ext(R(1.2, 0.7, e * (LEN / 2 - 0.9), -DEP / 2 + 0.35), FL, FL + 0.6));
         }
-        // 記者席（ダッグアウトの外野寄りの横・写真と航空写真: 白い屋根の細長い箱）: 床 -0.9m、前はガラス、上は白い屋根
+        // カメラマン席（ダッグアウトの外野寄りの横・写真と航空写真: 白い屋根の細長い箱）: 床 -0.9m、前は低い塀だけで開いている（ガラスなし）、上は白い屋根
         {
           const PB = R(12, 3.2, LEN / 2 + 0.4 + 6, -0.4);
           dug.push(PB);
           dugSolids.push(ext(PB, FL - 0.15, FL));
           pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 + 1.475), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 0.125, -0.4), FL, 1.6), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 12 - 0.125, -0.4), FL, 1.6));
-          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.25)); // 前の腰壁
-          pressGlass.push(ext(R(11.5, 0.06, LEN / 2 + 0.4 + 6, -0.4 - 1.5), 0.25, 1.5));
+          camWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.3)); // 前の低い塀（その上は開いている）
           pressRoof.push(ext(R(12.4, 3.6, LEN / 2 + 0.4 + 6, -0.4), 1.6, 1.8));
-          pressDesk.push(ext(R(11.4, 0.6, LEN / 2 + 0.4 + 6, -0.4 - 0.9), FL + 0.7, FL + 0.75), ext(R(11.4, 0.5, LEN / 2 + 0.4 + 6, -0.4 + 0.2), FL, FL + 0.45));
+          pressDesk.push(ext(R(11.4, 1.2, LEN / 2 + 0.4 + 6, -0.4 + 0.6), FL, FL + 0.35)); // カメラを置く台
         }
-        // カメラマン席（ダッグアウトの本塁寄りの横）: 床 -0.9m、前の塀 0.55m
-        const cam = R(6, 2.6, -LEN / 2 - 3.2, -0.7);
-        dug.push(cam);
-        dugSolids.push(ext(cam, FL - 0.15, FL));
-        camWall.push(ext(R(6, 0.2, -LEN / 2 - 3.2, -0.7 - 1.2), FL, 0.55));
         // 写真（ベンチ）: 屋根の前の縁に白い MIZUNO、前の手すりに緑の帯の広告（デオデオ / DEODEO）と下の金網、
         // 屋根の上に客席を守る防球ネット（黒い細い柱と黒いネット）、中は緑の 1 人掛けの椅子
         {
@@ -665,16 +658,15 @@ const main = async () => {
       add(union(dugRail), 'ダッグアウトの手すり', 'スタンド', 'steel-white');
       add(union(dugBench), 'ダッグアウトの椅子の台', 'スタンド', 'concrete');
       add(union(dugChair), 'ダッグアウトの椅子（緑）', 'スタンド', '#2f6f4e');
-      add(union(pressWall), '記者席の壁', 'スタンド', '#3a5b56');
-      add(union(pressGlass), '記者席の前のガラス', 'スタンド', 'glass');
-      add(union(pressRoof), '記者席の屋根（白）', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
-      add(union(pressDesk), '記者席の机・椅子の台', 'スタンド', 'wood-light');
+      add(union(pressWall), 'カメラマン席の壁', 'スタンド', '#3a5b56');
+      add(union(pressRoof), 'カメラマン席の屋根（白）', 'スタンド', (n) => (n.z > 0.5 ? 'galva-white' : '#3a5b56'));
+      add(union(pressDesk), 'カメラマン席のカメラ台', 'スタンド', 'concrete');
       add(union(dugBanner), 'ベンチ前の手すりの広告の帯', 'スタンド', '#22553f');
       add(union(dugMesh), 'ベンチ前の金網', 'スタンド', 'net-black');
       add(union(dugNet), 'ベンチ上の防球ネット', 'スタンド', 'net-black');
       add(union(dugPole), 'ベンチ上の防球ネットの柱', 'スタンド', '#24282a');
       add(union(dugRack), 'バットラック・ヘルメット棚', 'スタンド', 'wood-walnut');
-      add(union(camWall), 'カメラマン席の塀（0.55m）', 'スタンド', '#3a5b56');
+      add(union(camWall), 'カメラマン席の前の塀', 'スタンド', '#3a5b56');
       podiumPit = dugU;
       // 台（高さ 2m）を、スタンド側が高くグラウンド側が低い段々の席にする（1 段 0.95m・蹴上げ 0.33m）
       const W = 0.95;
