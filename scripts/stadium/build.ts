@@ -1025,8 +1025,8 @@ const main = async () => {
       add(union(sk1s), '外野砂かぶり席の座席', 'スタンド', 'paint-red');
       // その奥（デッキの下）: ちょっとびっくりテラス（テーブル席・L601〜L631）
       const yel = c.intersect(SKW).offset(-0.8, 'Round');
-      for (let t = qMin; t < qMax; t += 3.2) {
-        for (let s2 = sR - 1.6; s2 > sR - 14; s2 -= 3.0) {
+      for (let t = qMin; t < qMax; t += 4.0) {
+        for (let s2 = sR - 1.6; s2 > sR - 14; s2 -= 3.8) {
           const p: [number, number] = [u[0] * s2 + q[0] * t, u[1] * s2 + q[1] * t];
           if (pointIn(yel, p)) put('dining-set', p[0], p[1], 0, (Math.atan2(u[0], u[1]) * 180) / Math.PI);
         }
@@ -1081,8 +1081,8 @@ const main = async () => {
       add(ext(deckWall, 0, 7.1), 'デッキの下の壁', 'スタンド', 'concrete');
       add(ext(c.subtract(c.offset(-0.2, 'Round')).subtract(band(u, sR - 0.5, sF + 1)), T3, T3 + 1.1), 'デッキの手すり', 'スタンド', 'steel-white');
       const terrace = c.offset(-1.2, 'Round');
-      for (let t = qMin + 2; t < qMax - 2; t += 3.6) {
-        for (let s2 = sR - 2.5; s2 > sR - 16; s2 -= 3.4) {
+      for (let t = qMin + 2; t < qMax - 2; t += 4.6) {
+        for (let s2 = sR - 2.5; s2 > sR - 16; s2 -= 4.2) {
           const p: [number, number] = [u[0] * s2 + q[0] * t, u[1] * s2 + q[1] * t];
           if (pointIn(terrace, p)) put('dining-set', p[0], p[1], T3, (Math.atan2(u[0], u[1]) * 180) / Math.PI);
         }
