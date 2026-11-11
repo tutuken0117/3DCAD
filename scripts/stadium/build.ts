@@ -683,8 +683,8 @@ const main = async () => {
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
       add(ext(fence, -0.9, 0.9), '砂かぶり席の前のフェンス（グラウンドから 0.9m）', 'スタンド', '#3a5b56');
-      // バックネット（写真）: 一塁側・三塁側のダッグアウトの近くに立てた高い柱（約 27m）の間に、高さ 20m 余りのワイヤーを張り、
-      // そこから大きな黒いネットを砂かぶり席の前のフェンスまで垂らす。ワイヤーは本塁裏の屋根から斜めのワイヤーで吊り、ネットには細い縦のワイヤーが入る
+      // バックネット（写真）: 高さ 20m 余りの上のワイヤーから大きな黒いネットを砂かぶり席の前のフェンスまで垂らす。柱はなく、
+      // ワイヤーは両端を一塁側・三塁側の 2 階スタンドの屋根へ、途中を本塁裏の屋根から斜めのワイヤーで吊る。ネットには細い縦のワイヤーが入る
       const NETR = 45;
       const keepO = keep.offset(0.06, 'Round');
       /** 本塁から向き a（センターから三塁側へ +）で、ネットの帯（フェンス）に当たる所 */
@@ -713,7 +713,6 @@ const main = async () => {
       const hOf = (f: number) => HT - SAG * 4 * f * (1 - f);
       const netSolids: Mf[] = [];
       const netWire: Mf[] = [];
-      const netSteel: Mf[] = [];
       for (let k = 0; k + 1 < samples.length; k++) {
         const A1 = samples[k];
         const B1 = samples[k + 1];
@@ -727,20 +726,16 @@ const main = async () => {
         netWire.push(cable([A1.p[0], A1.p[1], ha], [B1.p[0], B1.p[1], hb], 0.04)); // 上のワイヤー
         if (k % 3 === 0) netWire.push(cable([A1.p[0], A1.p[1], 0.9], [A1.p[0], A1.p[1], ha], 0.02)); // 縦のワイヤー
       }
-      // 端の柱（フェンスの 9m 外のスタンドの中・高さ 27m）と、本塁裏の屋根から吊る斜めのワイヤー
+      // 柱はない（写真）。上のワイヤーの両端は、一塁側・三塁側の 2 階スタンドの屋根の前のふちへ斜めに引っ張り、
+      // 途中は本塁裏の屋根から吊る
       const roofAnchor = at(rot(cf, 180), 58);
       const RZ = 27.5;
-      for (const e of [samples[0], samples[samples.length - 1]]) {
+      for (const [e, sg] of [[samples[0], -1], [samples[samples.length - 1], 1]] as [{ p: P2; f: number } | undefined, number][]) {
         if (!e) continue;
-        const dx = e.p[0] - home[0];
-        const dy = e.p[1] - home[1];
-        const dl2 = Math.hypot(dx, dy);
-        const pp: P2 = [e.p[0] + (dx / dl2) * 9, e.p[1] + (dy / dl2) * 9]; // スタンドの中（ベンチの後ろ）
-        netSteel.push(Manifold.cylinder(27.5, 0.45, 0.25, 20).translate([pp[0], pp[1], 0]));
-        netWire.push(cable([pp[0], pp[1], 27.0], [e.p[0], e.p[1], HT], 0.05));
-        netWire.push(cable([pp[0], pp[1], 27.3], [roofAnchor[0], roofAnchor[1], RZ], 0.05));
-        // 柱を後ろへ引くワイヤー
-        netWire.push(cable([pp[0], pp[1], 27.0], [pp[0] + (dx / dl2) * 14, pp[1] + (dy / dl2) * 14, 8], 0.04));
+        const an = at(rot(cf, 180 + sg * (SPAN + 18)), 50);
+        netWire.push(cable([e.p[0], e.p[1], HT], [an[0], an[1], 25.5], 0.05));
+        // ネットの端の縦のワイヤー
+        netWire.push(cable([e.p[0], e.p[1], 0.9], [e.p[0], e.p[1], HT], 0.03));
       }
       for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
         const e = samples.reduce((b2, x) => (Math.abs(x.f - f) < Math.abs(b2.f - f) ? x : b2), samples[0]);
@@ -748,7 +743,6 @@ const main = async () => {
       }
       add(union(netSolids), 'バックネット（ネット）', 'スタンド', 'net-black');
       add(union(netWire), 'バックネットのワイヤー', 'スタンド', '#2a2d2e');
-      add(union(netSteel), 'バックネットの柱', 'スタンド', 'steel-white');
       console.log('backnet samples', samples.length);
       // ネクストバッターズサークル（直径 1.52m）: 本塁とダッグアウトの間
       const odc: Mf[] = [];
