@@ -1106,7 +1106,11 @@ const main = async () => {
   }
   for (const [k, l] of deco) {
     const [name, color] = k.split('|');
-    add(union(l), name, '広告・看板', color);
+    const t0 = Date.now();
+    const u2 = union(l);
+    const t1 = Date.now();
+    add(u2, name, '広告・看板', color);
+    console.log('deco', name, color, l.length, 'tris', u2?.numTri(), 'union', t1 - t0, 'add', Date.now() - t1, 'ms');
   }
 
   // マウンド（芝の内側の穴のうち円いもの）
