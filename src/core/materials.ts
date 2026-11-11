@@ -76,6 +76,7 @@ export const MATERIALS: MaterialDef[] = [
   m('yakisugi', '焼杉', '外壁', dull('#2f2a27', 'wood', 1.2, 0.9)),
   m('galva-black', '黒いガルバリウム（縦張り）', '外壁', metal('#3a3d40', 'metal-vertical', 1.4)),
   m('galva-silver', 'ガルバリウム角波（シルバー）', '外壁', metal('#b8bdc2', 'metal-vertical', 1.0)),
+  m('siding-red', '赤茶色の波板（縦張り）', '外壁', metal('#a4544b', 'metal-vertical', 0.6)),
   m('galva-white', 'ガルバリウム（白）', '外壁', metal('#e2e3e1', 'metal-vertical', 1.4)),
   m('galva-navy', 'ガルバリウム（ネイビー）', '外壁', metal('#2f3b4f', 'metal-vertical', 1.4)),
   m('metal-panel', '金属パネル（シルバー）', '外壁', metal('#c3c6c9', 'panel', 2.4)),

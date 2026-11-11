@@ -120,7 +120,7 @@ const main = async () => {
     return { pts, len, at };
   };
   /** 曲がった壁に沿わせて 1 文字ずつ貼る（ベースラインの高さ z0、字の大きさ size） */
-  const textAlong = (pl: ReturnType<typeof polyline>, sMid: number, z0: number, size: number, str: string, off: number, th: number, name: string, color: string) => {
+  const textAlong = (pl: ReturnType<typeof polyline>, sMid: number, z0: number, size: number, str: string, off: number, th: number, name: string, color: string, italic = 0) => {
     const gs = glyphs(str);
     const W = gs.reduce((a, g) => a + g.adv, 0) * size;
     let s = sMid - W / 2;
@@ -128,7 +128,8 @@ const main = async () => {
       const sc = s + (g.adv * size) / 2;
       s += g.adv * size;
       if (!g.rings.length) continue;
-      const cs = new CrossSection(g.rings, 'NonZero').translate([-g.adv / 2, 0]).scale(size);
+      const rings = italic ? g.rings.map((r) => r.map(([x, y]) => [x + italic * y, y] as [number, number])) : g.rings;
+      const cs = new CrossSection(rings, 'NonZero').translate([-g.adv / 2, 0]).scale(size);
       if (cs.isEmpty()) continue;
       const { p, t } = pl.at(sc);
       pushDeco(name, color, place(cs, p, z0, t, off, th));
@@ -440,6 +441,7 @@ const main = async () => {
   const hex = (v: string | undefined) => {
     if (!v || !/^#[0-9a-f]{6}$/i.test(v)) return undefined;
     const h = v.toLowerCase();
+    if (h === '#a6716d') return 'siding-red'; // 外壁の赤茶色の波板（写真）
     return h === '#d46585' ? 'paint-red' : h;
   };
 
@@ -620,25 +622,61 @@ const main = async () => {
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
       add(ext(fence, -0.9, 0.9), '砂かぶり席の前のフェンス（グラウンドから 0.9m）', 'スタンド', '#3a5b56');
-      // バックネット: 砂かぶり席の前のフェンスの上に高さ 10m のネット。黒い支柱（約 5m おき）と上の梁・中間のワイヤー
+      // バックネット: 砂かぶり席の前のフェンスの上から張る黒いネット。
+      // 本塁裏の両側と後ろに高い鋼管の柱（約 15m）を立て、柱の上どうしをワイヤーで結んで、ネットをそのワイヤーから吊る（ワイヤーは柱の間で少したわむ）
       const NETR = 26;
-      const NH = 10.0;
-      const netBand = fence.intersect(CrossSection.circle(NETR, 96).translate(home));
-      add(ext(netBand, 0.9, NH), 'バックネット（ネット）', 'スタンド', 'net-black');
-      const netSteel: Mf[] = [];
-      netSteel.push(ext(netBand.offset(0.01, 'Round'), NH - 0.05, NH)); // 上のワイヤー
-      // 支柱: 本塁から見た向きごとに、ネットの帯に当たる所
       const keepO = keep.offset(0.06, 'Round');
-      for (let a = 180 - 84; a <= 180 + 84; a += 21) {
+      /** 本塁から向き a（センターから三塁側へ +）で、ネットの帯に当たる所 */
+      const netAt = (a: number): P2 | null => {
         const dd = rot(cf, a);
         let r = 8;
         while (r < NETR && !pointIn(keepO, at(dd, r))) r += 0.4;
-        if (r >= NETR) continue;
+        if (r >= NETR) return null;
         while (r > 6 && pointIn(keepO, at(dd, r - 0.05))) r -= 0.05;
-        const pp = at(dd, r - 0.02);
-        netSteel.push(Manifold.cylinder(NH + 0.3 - 0.9, 0.06, 0.06, 10).translate([pp[0], pp[1], 0.9]));
+        return at(dd, r - 0.02);
+      };
+      const POLES = [180 - 66, 180 - 33, 180, 180 + 33, 180 + 66];
+      const HP = 15.0; // 柱の高さ
+      const SAG = 1.6; // ワイヤーのたわみ
+      const netSolids: Mf[] = [];
+      const netSteel: Mf[] = [];
+      const netWire: Mf[] = [];
+      for (let k = 0; k + 1 < POLES.length; k++) {
+        const a0 = POLES[k];
+        const a1 = POLES[k + 1];
+        const N = 14;
+        let prev: { p: P2; h: number } | null = null;
+        for (let j = 0; j <= N; j++) {
+          const f = j / N;
+          const pp = netAt(a0 + (a1 - a0) * f);
+          if (!pp) { prev = null; continue; }
+          const h = HP - 0.3 - SAG * 4 * f * (1 - f);
+          if (prev) {
+            const L = Math.hypot(pp[0] - prev.p[0], pp[1] - prev.p[1]);
+            const tt: P2 = [(pp[0] - prev.p[0]) / L, (pp[1] - prev.p[1]) / L];
+            const mid: P2 = [(pp[0] + prev.p[0]) / 2, (pp[1] + prev.p[1]) / 2];
+            const hm = (h + prev.h) / 2;
+            // ネット（下 0.9m から吊りワイヤーまで）。上の辺はワイヤーのたわみに合わせて斜めに
+            const net = new CrossSection([ccw([[-L / 2, 0.9], [L / 2, 0.9], [L / 2, h], [-L / 2, prev.h]])], 'Positive');
+            netSolids.push(place(net, mid, 0, tt, -0.015, 0.03));
+            netWire.push(place(new CrossSection([ccw([[-L / 2 - 0.02, prev.h - 0.025], [L / 2 + 0.02, h - 0.025], [L / 2 + 0.02, h + 0.025], [-L / 2 - 0.02, prev.h + 0.025]])], 'Positive'), mid, 0, tt, -0.03, 0.06));
+            // 横に張った細いワイヤー（ネットの補強・3m おき）
+            for (const z of [3.9, 6.9, 9.9]) if (z < Math.min(h, prev.h) - 0.3) netWire.push(place(rect(L + 0.02, 0.03), mid, z, tt, -0.02, 0.04));
+            void hm;
+          }
+          prev = { p: pp, h };
+        }
       }
-      add(union(netSteel), 'バックネットの支柱・梁', 'スタンド', '#2a2d2e');
+      for (const a of POLES) {
+        const pp = netAt(a);
+        if (!pp) continue;
+        // 鋼管柱（下が太い）と頭の金具
+        netSteel.push(Manifold.cylinder(HP - 0.9, 0.2, 0.13, 16).translate([pp[0], pp[1], 0.9]));
+        netSteel.push(Manifold.cylinder(0.25, 0.22, 0.22, 16).translate([pp[0], pp[1], HP - 0.25]));
+      }
+      add(union(netSolids), 'バックネット（ネット）', 'スタンド', 'net-black');
+      add(union(netWire), 'バックネットの吊りワイヤー', 'スタンド', '#2a2d2e');
+      add(union(netSteel), 'バックネットの柱', 'スタンド', 'steel-white');
       // ネクストバッターズサークル（直径 1.52m）: 本塁とダッグアウトの間
       const odc: Mf[] = [];
       const odcRing: Mf[] = [];
@@ -753,22 +791,21 @@ const main = async () => {
         const angOf = (p: P2) => deg(Math.atan2(cf[0] * (p[1] - home[1]) - cf[1] * (p[0] - home[0]), cf[0] * (p[0] - home[0]) + cf[1] * (p[1] - home[1])));
         const pts = ringF.filter((p) => Math.hypot(p[0] - home[0], p[1] - home[1]) > 85 && angOf(p) < 35.2 && angOf(p) > -44.5).sort((a2, b2) => angOf(b2) - angOf(a2));
         const pl = polyline(pts);
-        const SP: [string, string, string][] = [
-          ['SUNSTAR GUM', '#d7000f', 'white'], ['クマヒラ', 'white', '#003f8e'], ['ユウベル', '#0068b7', 'white'], ['福屋', 'white', '#c8102e'],
-          ['キリンビバレッジ', '#e60012', 'white'], ['中国電力', 'white', '#0067b0'], ['三井住友海上', 'white', '#00843d'], ['広島銀行', '#d70c18', 'white'],
-          ['広島ガス', '#0067b0', 'white'], ['アサヒビール', '#1b1b1b', 'white'], ['CGC', '#00913a', 'white'], ['千福', '#1a1a1a', '#f5d300'],
-        ];
+        // 写真の並び（白い文字・フェンスの緑の上に直接）
+        const SP = ['福屋', 'キリンビバレッジ', '石窯 タカキベーカリー', '中國新聞', '東洋証券', 'SUZUKI', '大和興産', 'フマキラー', '章栄不動産', 'NOHMI 能美防災', 'ヘルストロン', 'ベッセルホテルズ', 'もみじ にしき堂', '広島ガス'];
         let k = 0;
-        for (let s2 = 6; s2 < pl.len - 4; s2 += 9.5) {
-          const { p, t } = pl.at(s2);
-          if (Math.abs(angOf(p)) < 7) continue; // バックスクリーンの前（打者の目の前）は広告なし
-          // 実物は緑のフェンスに白い文字だけ（板なし）
-          const [txt] = SP[k++ % SP.length];
-          // 曲がったフェンスに沿わせて 1 文字ずつ（板にするとフェンスにめり込む）
-          const gs = glyphs(txt);
-          const adv = gs.reduce((a, g) => a + g.adv, 0);
-          textAlong(pl, s2, 1.8, Math.min(1.0, 6.5 / Math.max(adv, 0.1)), txt, 0.01, 0.02, '外野フェンスの広告（白文字）', 'white');
-          void t;
+        let s2 = 3;
+        while (s2 < pl.len - 3) {
+          const txt = SP[k % SP.length];
+          const adv = glyphs(txt).reduce((a, g) => a + g.adv, 0);
+          const size = Math.min(1.5, 11 / Math.max(adv, 0.1));
+          const W = adv * size;
+          const { p } = pl.at(s2 + W / 2);
+          if (Math.abs(angOf(p)) < 8) { s2 += 2; continue; } // バックスクリーンの前は広告なし
+          if (s2 + W > pl.len - 2) break;
+          textAlong(pl, s2 + W / 2, 1.35, size, txt, 0.01, 0.025, '外野フェンスの広告（白文字）', 'white');
+          k++;
+          s2 += W + 2.2;
         }
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));
       }
@@ -1011,7 +1048,11 @@ const main = async () => {
     add(union(g.solids), name, g.layer, g.rule);
   }
 
-  // ---- スコアボード（センター後方・地図データ r8829180 の正面 17.2〜25.7m）----
+  // ---- スコアボード（センター後方）: 写真に合わせて
+  //   上: 濃い灰色の大きな板（地図データ r8829180・17.2〜25.7m）。上の段に広告（三井住友海上・広島銀行・時計・セブン-イレブン・DISCO）、
+  //       左右に縦の看板（アサヒビール・広島市信用組合）、真ん中に LED（選手・得点・B S O・両チームの打順）
+  //   その下: 下の箱（r8829134）の上部に広告の段（東亜地所・西川ゴム工業・KIRIN 一番搾り・ムロオ・kitagawa）
+  //   緑の箱（バックスクリーン）に you me ゆめタウン、上に 5 本の旗
   {
     const sbItem = partItems.find((i) => i.id === 'r8829180');
     if (sbItem) {
@@ -1028,90 +1069,174 @@ const main = async () => {
       const n = nOf(t);
       const off0 = Math.max(0, ...ring.map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1]));
       const S = (s2: number): P2 => [A0[0] + t[0] * s2, A0[1] + t[1] * s2];
+      // 下の箱の範囲（板の座標 s）
+      const low = partItems.find((i) => i.id === 'r8829134');
+      const lowS = low ? low.outer![0].map((p) => (p[0] - A0[0]) * t[0] + (p[1] - A0[1]) * t[1]) : [8.9, 40.3];
+      const LS0 = Math.min(...lowS);
+      const LS1 = Math.max(...lowS);
       const Z0 = 17.2;
       const Z1 = 25.7;
+      const GRAY = '#3c3e40';
       const panel = (s0: number, s1: number, z0: number, z1: number, off: number, th: number, name: string, color: string) =>
         pushDeco(name, color, place(rect(s1 - s0, z1 - z0), S((s0 + s1) / 2), (z0 + z1) / 2, t, off0 + off, th));
-      const txt = (str: string, sc: number, zc: number, size: number, maxW: number, color: string, name = 'スコアボードの表示') => {
+      const txt = (str: string, sc: number, zc: number, size: number, maxW: number, color: string, off = 0.12, name = 'スコアボードの表示') => {
         const tc = textCs(str, size, maxW);
-        if (tc) pushDeco(name, color, place(tc, S(sc), zc, t, off0 + 0.12, 0.02));
+        if (tc) pushDeco(name, color, place(tc, S(sc), zc, t, off0 + off, 0.02));
       };
-      // 枠（濃い緑の箱の正面に黒い縁）
-      panel(0, L, Z0, Z1, 0, 0.05, 'スコアボードの枠', '#1f2a28');
-      // 左端の縦の看板（アサヒビール）
-      panel(0.5, 4.3, Z0 + 0.4, Z1 - 0.4, 0.05, 0.06, 'スコアボードの看板', '#f2f2f2');
-      {
-        const chars = [...'アサヒビール'];
-        const step = (Z1 - Z0 - 1.4) / chars.length;
+      /** 縦書き（1 文字ずつ上から） */
+      const vtxt = (str: string, sc: number, zTop: number, zBot: number, w: number, color: string, off = 0.12, name = 'スコアボードの表示') => {
+        const chars = [...str];
+        const step = (zTop - zBot) / chars.length;
         chars.forEach((ch, i) => {
-          let tc = textCs(ch, Math.min(step * 0.8, 1.0), 3.0);
+          let tc = textCs(ch, Math.min(step * 0.82, w), w);
           if (!tc) return;
           if (ch === 'ー') tc = tc.rotate(90);
-          pushDeco('スコアボードの看板の文字', '#1a3b8f', place(tc, S(2.4), Z1 - 0.9 - step * (i + 0.5), t, off0 + 0.11, 0.02));
+          pushDeco(name, color, place(tc, S(sc), zTop - step * (i + 0.5), t, off0 + off, 0.02));
         });
-      }
-      // 得点板（LED・黒）
-      const LS0 = 4.9;
-      const LS1 = 22.0;
-      panel(LS0, LS1, Z0 + 0.5, Z1 - 0.5, 0.05, 0.06, 'スコアボードの画面（黒）', '#0b0d0e');
-      const colX = (i: number) => LS0 + 4.1 + i * 1.05; // 1〜9 回
-      const rheX = (i: number) => LS0 + 4.1 + 9 * 1.05 + 0.4 + i * 1.15;
-      const rows: [string, string[], string[]][] = [
-        ['巨人', ['0', '0', '1', '0', '0', '0', '0', '0', '0'], ['1', '5', '0']],
-        ['広島', ['2', '0', '0', '0', '1', '0', '0', '0', 'X'], ['3', '8', '0']],
+      };
+      // 板（濃い灰色）
+      panel(0, L, Z0, Z1, 0, 0.06, 'スコアボードの板（濃い灰色）', GRAY);
+      // 上の段の広告
+      const ZH0 = 24.0;
+      panel(0.3, L - 0.3, ZH0 - 0.06, ZH0 - 0.02, 0.06, 0.02, 'スコアボードの区切り', '#9a9ea2');
+      txt('三井住友海上', 9.5, 24.85, 1.05, 10, 'white', 0.08, 'スコアボードの広告（白文字）');
+      txt('広島銀行', 19.5, 24.85, 1.05, 7, 'white', 0.08, 'スコアボードの広告（白文字）');
+      pushDeco('スコアボードの広告（白文字）', 'white', place(CrossSection.circle(0.55, 32).subtract(CrossSection.circle(0.45, 32)), S(24.2), 24.85, t, off0 + 0.08, 0.02)); // 時計
+      txt('セブン-イレブン', 30.5, 24.85, 1.0, 9, 'white', 0.08, 'スコアボードの広告（白文字）');
+      txt('DISCO', 39.5, 24.85, 0.95, 6, 'white', 0.08, 'スコアボードの広告（白文字）');
+      const small = ['焙煎ごぼう茶 あじかん', 'JA 農とあゆむ', 'JAバンク広島', 'DAISO'];
+      small.forEach((v, i) => txt(v, 9 + i * 9.5, 23.55, 0.5, 8, 'white', 0.08, 'スコアボードの広告（白文字）'));
+      // 左右の縦の看板
+      vtxt('アサヒビール', 2.0, Z1 - 0.6, Z0 + 0.5, 2.0, 'white', 0.08, 'スコアボードの広告（白文字）');
+      vtxt('広島市信用組合', L - 2.0, Z1 - 0.6, Z0 + 0.5, 1.6, 'white', 0.08, 'スコアボードの広告（白文字）');
+      // LED（黒）
+      const E0 = 3.9;
+      const E1 = L - 3.9;
+      const ZE0 = Z0 + 0.6;
+      const ZE1 = 23.1;
+      panel(E0, E1, ZE0, ZE1, 0.06, 0.04, 'スコアボードの LED（黒）', '#0d0f11');
+      // 選手の表示（左）
+      const P0 = E0 + 0.4;
+      panel(P0, P0 + 6.2, ZE1 - 1.0, ZE1 - 0.25, 0.1, 0.01, 'スコアボードの LED（白い帯）', '#e9ecef');
+      txt('77 ガルシア', P0 + 3.1, ZE1 - 0.62, 0.5, 5.6, '#111111', 0.12);
+      txt('投球数 83  奪三振 2', P0 + 3.1, ZE1 - 1.45, 0.42, 5.8, 'white');
+      panel(P0, P0 + 6.2, ZE1 - 2.6, ZE1 - 1.85, 0.1, 0.01, 'スコアボードの LED（赤い帯）', '#d0202e');
+      txt('4 小窪 哲也', P0 + 3.1, ZE1 - 2.22, 0.5, 5.6, 'white', 0.12);
+      txt('AVG .264  HR 1  RBI 4', P0 + 3.1, ZE1 - 3.05, 0.4, 5.8, 'white');
+      txt('佐 名 吉 白', P0 + 3.1, ZE1 - 3.85, 0.45, 5.8, 'white');
+      txt('藤 幸 本 井', P0 + 3.1, ZE1 - 4.55, 0.45, 5.8, 'white');
+      // 得点（1〜9 回・R H E）
+      const G0 = P0 + 6.8;
+      const colX = (i: number) => G0 + 1.6 + i * 0.95;
+      const rheX = (i: number) => G0 + 1.6 + 9 * 0.95 + 0.3 + i * 1.0;
+      panel(G0, rheX(2) + 0.6, ZE1 - 0.95, ZE1 - 0.3, 0.1, 0.01, 'スコアボードの LED（灰色の帯）', '#4a4f55');
+      for (let i = 0; i < 9; i++) txt(String(i + 1), colX(i), ZE1 - 0.62, 0.45, 0.8, 'white');
+      ['R', 'H', 'E'].forEach((ch, i) => txt(ch, rheX(i), ZE1 - 0.62, 0.45, 0.8, 'white'));
+      const rows: [string, string, string[], string[]][] = [
+        ['T', '#f5c400', ['0', '7', '0', '0', '0', '0', '', '', ''], ['7', '12', '1']],
+        ['C', '#d0202e', ['0', '0', '0', '0', '0', '', '', '', ''], ['0', '7', '0']],
       ];
-      const zH = Z1 - 1.25;
-      for (let i = 0; i < 9; i++) txt(String(i + 1), colX(i), zH, 0.55, 0.9, 'white');
-      ['R', 'H', 'E'].forEach((ch, i) => txt(ch, rheX(i), zH, 0.55, 0.9, 'white'));
-      rows.forEach(([team, inn, rhe], r) => {
-        const zr = zH - 1.25 * (r + 1);
-        txt(team, LS0 + 1.9, zr, 0.75, 3.2, r === 1 ? '#ff3b3b' : 'white');
-        inn.forEach((v, i) => txt(v, colX(i), zr, 0.75, 0.9, '#ffd400'));
-        rhe.forEach((v, i) => txt(v, rheX(i), zr, 0.75, 1.0, '#ffd400'));
+      rows.forEach(([lg, lc, inn, rhe], r) => {
+        const zr = ZE1 - 1.75 - r * 1.25;
+        panel(G0 + 0.15, G0 + 1.05, zr - 0.45, zr + 0.45, 0.1, 0.01, 'スコアボードの LED（チームの印）', lc);
+        txt(lg, G0 + 0.6, zr, 0.6, 0.8, r === 0 ? '#111111' : 'white', 0.12);
+        inn.forEach((v, i) => v && txt(v, colX(i), zr, 0.8, 0.8, 'white'));
+        rhe.forEach((v, i) => txt(v, rheX(i), zr, 0.8, 0.95, 'white'));
       });
-      // 区切りの線
-      panel(LS0 + 0.3, LS1 - 0.3, zH - 0.65, zH - 0.6, 0.11, 0.01, 'スコアボードの表示', '#5a6266');
-      // B・S・O のランプ
+      // B・S・O（中央下）
       const lamps: [string, string, number][] = [['B', '#22c55e', 3], ['S', '#facc15', 2], ['O', '#ef4444', 2]];
+      const bx = rheX(0) - 1.4;
       lamps.forEach(([ch, col, nl], r) => {
-        const zr = zH - 1.25 * 3 - 0.95 * r - 0.3;
-        txt(ch, LS0 + 1.0, zr, 0.6, 0.8, 'white');
-        for (let k = 0; k < nl; k++) pushDeco('スコアボードのランプ', col, place(CrossSection.circle(0.28, 20), S(LS0 + 2.0 + k * 0.75), zr, t, off0 + 0.11, 0.03));
+        const zr = ZE0 + 1.5 - r * 0.55;
+        txt(ch, bx, zr, 0.4, 0.5, 'white');
+        for (let k = 0; k < 3; k++) pushDeco(k < nl - 1 ? 'スコアボードのランプ（点灯）' : 'スコアボードのランプ', k < nl - 1 ? col : '#2d3136', place(CrossSection.circle(0.2, 16), S(bx + 0.6 + k * 0.5), zr, t, off0 + 0.11, 0.02));
       });
-      // 打順（右下）
-      ['1 菊池', '2 野間', '3 小園', '4 末包'].forEach((v, i) => txt(v, LS0 + 9.0 + (i % 2) * 5.4, zH - 1.25 * 3 - 0.4 - Math.floor(i / 2) * 1.0, 0.6, 4.6, 'white'));
-      // メインビジョン（大型映像装置）
-      panel(LS1 + 0.6, L - 0.5, Z0 + 0.5, Z1 - 0.5, 0.05, 0.06, 'スコアボードの画面（黒）', '#0b0d0e');
-      const mvC = (LS1 + 0.6 + L - 0.5) / 2;
-      panel(LS1 + 1.0, L - 0.9, Z0 + 0.9, Z1 - 0.9, 0.11, 0.01, 'メインビジョンの映像', '#13324f');
-      txt('Carp', mvC, Z0 + 4.8, 3.0, 18, '#e60012', 'メインビジョンの映像（文字）');
-      txt('MAZDA Zoom-Zoom スタジアム広島', mvC, Z0 + 1.9, 0.9, 22, 'white', 'メインビジョンの映像（文字）');
-      // 上の看板（一番搾り・東亜地所・youme ゆめタウン）
-      const TOP: [number, number, string, string, string][] = [
-        [0.4, 15.8, 'white', '#c8102e', 'キリン一番搾り'], [16.3, 32.0, '#003d7c', 'white', '東亜地所'], [32.5, L - 0.4, '#e5006e', 'white', 'youme ゆめタウン'],
+      // 両チームの打順（右・縦書きの名前 9 人ずつ）
+      const O0 = rheX(2) + 1.2;
+      const OW = (E1 - 0.3 - O0 - 1.2) / 9;
+      const teams: [string, string, string[]][] = [
+        ['阪神', '#f5c400', ['近本', '糸原', '中谷', '大山', 'マルテ', '梅野', '高山', '木浪', 'ガルシア']],
+        ['広島', '#d0202e', ['野間', '菊池', 'バティスタ', '鈴木', '西川', '磯村', '小窪', '田中', '九里']],
       ];
-      for (const [s0, s1, bg, fg, tx] of TOP) adBoard(S((s0 + s1) / 2), Z1 + 1.0, t, s1 - s0, 1.8, bg, fg, tx, off0 - 0.4, 'スコアボード上の看板');
-      // 看板の支え
-      const legs: Mf[] = [];
-      for (let s2 = 2; s2 < L; s2 += 6) legs.push(place(rect(0.25, 2.0), S(s2), Z1 + 0.9, t, off0 - 0.75, 0.3));
-      add(union(legs), 'スコアボード上の看板の支え', '広告・看板', 'steel-white');
-      console.log('scoreboard', L.toFixed(1), off0.toFixed(2));
+      teams.forEach(([nm, col, names], r) => {
+        const zt = ZE1 - 0.3 - r * 2.55;
+        panel(O0, O0 + 1.0, zt - 2.3, zt, 0.1, 0.01, 'スコアボードの LED（チームの印）', col);
+        vtxt(nm, O0 + 0.5, zt - 0.15, zt - 2.15, 0.8, r === 0 ? '#111111' : 'white');
+        names.forEach((v, i) => {
+          const x = O0 + 1.2 + (i + 0.5) * OW;
+          txt(String(i + 1), x, zt - 0.3, 0.36, OW * 0.8, '#ffd400');
+          vtxt(v.length > 3 ? v.slice(0, 3) : v, x, zt - 0.6, zt - 2.3, OW * 0.75, 'white');
+        });
+      });
+      // LED の下の細い帯の広告
+      txt('エネコム   MEGA EGG', 8, Z0 + 0.3, 0.32, 8, 'white', 0.08, 'スコアボードの広告（白文字）');
+      txt('NTT Data', LS0 + 9, Z0 + 0.3, 0.32, 4, 'white', 0.08, 'スコアボードの広告（白文字）');
+      // 下の広告の段（下の箱の上部）
+      const ZA0 = 13.9;
+      const ZA1 = Z0 - 0.05;
+      panel(LS0, LS1, ZA0, ZA1, 0, 0.06, 'スコアボードの板（濃い灰色）', GRAY);
+      const W3 = (LS1 - LS0) / 3;
+      const za = (ZA0 + ZA1) / 2;
+      txt('春日野 東亜地所', LS0 + W3 / 2, za + 0.75, 0.95, W3 - 1, 'white', 0.08, 'スコアボードの広告（白文字）');
+      txt('nishikawa 西川ゴム工業', LS0 + W3 / 2, za - 0.75, 0.85, W3 - 1, 'white', 0.08, 'スコアボードの広告（白文字）');
+      panel(LS0 + W3 + 0.4, LS0 + 2 * W3 - 0.4, ZA0 + 0.35, ZA1 - 0.35, 0.06, 0.02, 'スコアボードの広告（白い板）', '#f2f2f2');
+      txt('KIRIN', LS0 + 1.5 * W3, za + 0.85, 0.5, W3, '#111111', 0.1);
+      txt('一番搾り', LS0 + 1.5 * W3, za - 0.35, 1.3, W3 - 1.4, '#111111', 0.1);
+      txt('食品の低温輸送 ムロオ', LS0 + 2.5 * W3, za + 0.75, 0.85, W3 - 1, 'white', 0.08, 'スコアボードの広告（白文字）');
+      panel(LS0 + 2 * W3 + 0.6, LS1 - 0.6, za - 1.3, za - 0.2, 0.06, 0.02, 'スコアボードの広告（白い板）', '#f2f2f2');
+      txt('kitagawa', LS0 + 2.5 * W3, za - 0.75, 0.75, W3 - 2, '#1f3c88', 0.1);
+      // 緑の箱の you me ゆめタウン（左右）
+      for (const sc of [LS0 + 2.6, LS1 - 2.6]) {
+        const box = rect(2.9, 2.6).subtract(rect(2.65, 2.35));
+        pushDeco('バックスクリーンの広告（白文字）', 'white', place(box, S(sc), 11.4, t, off0 + 0.02, 0.02));
+        txt('you', sc, 11.95, 0.75, 2.4, 'white', 0.04, 'バックスクリーンの広告（白文字）');
+        txt('me', sc, 10.9, 0.75, 2.4, 'white', 0.04, 'バックスクリーンの広告（白文字）');
+        txt('ゆめタウン', sc, 9.4, 0.55, 2.8, 'white', 0.04, 'バックスクリーンの広告（白文字）');
+      }
+      // 上の旗（5 本）
+      const flagPoles: Mf[] = [];
+      const flags: [number, string, string?][] = [[10, '#f5c400', '#111111'], [15.5, '#1f6b3a'], [20.5, '#ffffff', '#d0202e'], [26.5, '#e9e4dc', '#d0202e'], [31.5, '#1d2a5c']];
+      flags.forEach(([sc, c1, c2], i) => {
+        const H = 25.7 + (i === 2 ? 8.5 : 7.0);
+        const pp = S(sc);
+        const nb: P2 = [n[0] * (off0 - 1.2), n[1] * (off0 - 1.2)];
+        flagPoles.push(Manifold.cylinder(H - 25.7, 0.07, 0.07, 10).translate([pp[0] + nb[0], pp[1] + nb[1], 25.7]));
+        const fz = H - 0.75;
+        pushDeco('スコアボード上の旗', c1, place(rect(1.9, 1.25), S(sc + 0.95), fz, t, off0 - 1.2, 0.02));
+        if (c2 && i === 0) for (const dz of [-0.35, 0.05, 0.45]) pushDeco('スコアボード上の旗（模様）', c2, place(rect(1.9, 0.14), S(sc + 0.95), fz + dz - 0.05, t, off0 - 1.2 + 0.02, 0.01));
+        if (c2 && i > 0) pushDeco('スコアボード上の旗（模様）', c2, place(CrossSection.circle(0.36, 24), S(sc + 0.95), fz, t, off0 - 1.2 + 0.02, 0.01));
+      });
+      add(union(flagPoles), 'スコアボード上の旗竿', '広告・看板', 'steel-white');
+      console.log('scoreboard', L.toFixed(1), off0.toFixed(2), 'low', LS0.toFixed(1), LS1.toFixed(1));
     }
   }
-  // ---- 正面入口（本塁裏・西側）の球場名 ----
+  // ---- 正面入口（本塁裏・西側）の球場名: 赤茶色の外壁の、入口の上の開口のさらに上に 3 段（MAZDA / zoom-zoom / スタジアム広島）
   {
-    const gate = partItems.find((i) => i.id === 'r8880509');
-    if (gate) {
-      // 外側（西向き）の面: 輪のうち、同じ高さ（y）で一番西の点。北から南へ（西から見て左から右）
-      const ringG = gate.outer![0];
-      const pts = ringG.filter((p) => !ringG.some((q2) => Math.abs(q2[1] - p[1]) < 2.5 && q2[0] < p[0] - 0.8)).sort((a2, b2) => b2[1] - a2[1]) as P2[];
-      if (pts.length > 2) {
-        const pl = polyline(pts);
-        textAlong(pl, pl.len / 2, 11.6, 1.7, 'MAZDA Zoom-Zoom', 0.02, 0.15, '正面入口の球場名', 'white');
-        textAlong(pl, pl.len / 2, 8.4, 2.0, 'スタジアム広島', 0.02, 0.15, '正面入口の球場名', 'white');
-        console.log('gate sign', pl.len.toFixed(1));
-      }
+    // 外壁の外側の面（地図データ r8880509・r8917892・r8917893 の西の辺。北から南へ）
+    const facade: P2[] = [[-109.62, 14.47], [-110.55, 10.74], [-111.37, 6.59], [-111.97, 2.41], [-112.34, -1.79], [-112.52, -6.07], [-112.44, -10.23], [-112.3, -11.6], [-112.2, -14.4], [-111.8, -17.3], [-111.6, -18.6], [-110.9, -22.8], [-110.0, -26.9], [-108.8, -31.0], [-107.4, -35.0], [-105.9, -38.9], [-104.1, -42.7]];
+    const pl = polyline(facade);
+    // 入口の真ん中（y ≈ -14.4）
+    let sc = 0;
+    for (let s2 = 0; s2 < pl.len; s2 += 0.1) if (Math.abs(pl.at(s2).p[1] + 14.4) < Math.abs(pl.at(sc).p[1] + 14.4)) sc = s2;
+    textAlong(pl, sc, 12.75, 1.55, 'MAZDA', 0.03, 0.18, '正面入口の球場名', 'white', 0.22);
+    textAlong(pl, sc, 11.45, 1.75, 'zoom-zoom', 0.03, 0.18, '正面入口の球場名', 'white', 0.22);
+    textAlong(pl, sc, 10.15, 1.1, 'スタジアム広島', 0.03, 0.18, '正面入口の球場名', 'white', 0.22);
+    // 文字の影（写真では文字の下に濃い影）
+    textAlong(pl, sc + 0.12, 12.63, 1.55, 'MAZDA', 0.02, 0.02, '正面入口の球場名（影）', '#5a2a26', 0.22);
+    textAlong(pl, sc + 0.12, 11.33, 1.75, 'zoom-zoom', 0.02, 0.02, '正面入口の球場名（影）', '#5a2a26', 0.22);
+    textAlong(pl, sc + 0.12, 10.03, 1.1, 'スタジアム広島', 0.02, 0.02, '正面入口の球場名（影）', '#5a2a26', 0.22);
+    // 入口の上の赤い帯と「広島市民球場」の小さな看板（ガラスの下）
+    const bandPts: Mf[] = [];
+    for (let s2 = 0; s2 + 1 < pl.len; s2 += 1) {
+      const a2 = pl.at(s2);
+      bandPts.push(place(rect(1.05, 0.35), [a2.p[0] + a2.t[0] * 0.5, a2.p[1] + a2.t[1] * 0.5], 4.2, a2.t, 0.02, 0.05));
     }
+    add(union(bandPts), '正面入口の赤い帯', '広告・看板', '#b3122e');
+    const ps = pl.at(sc);
+    pushDeco('正面入口の看板', '#b3122e', place(rect(3.4, 0.7), ps.p, 4.2, ps.t, 0.08, 0.05));
+    const tc = textCs('広島市民球場', 0.45, 3.0);
+    if (tc) pushDeco('正面入口の看板の文字', 'white', place(tc, ps.p, 4.2, ps.t, 0.13, 0.02));
+    console.log('gate sign', pl.len.toFixed(1), sc.toFixed(1));
   }
   for (const [k, l] of deco) {
     const [name, color] = k.split('|');
