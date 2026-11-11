@@ -296,7 +296,7 @@ const main = async () => {
   for (const [dl2, sg] of [[d1, -90], [d3, 90]] as [P2, number][]) {
     const f = rot(dl2, sg); // 塁線からファウル地域の方
     const P = (a: number, o: number): P2 => [home[0] + dl2[0] * a + f[0] * o, home[1] + dl2[1] * a + f[1] * o];
-    marks.push(seg(P(19.8, 4.57), P(25.9, 4.57)), seg(P(19.8, 4.57), P(19.8, 7.62)));
+    marks.push(seg(P(19.8, 4.57), P(25.9, 4.57)), seg(P(19.8, 4.57), P(19.8, 7.62)), seg(P(25.9, 4.57), P(25.9, 7.62))); // 両端とも 3.05m の線
     if (sg < 0) marks.push(seg(P(13.72, 0.914), P(B, 0.914)), seg(P(13.72, 0), P(13.72, 0.914)));
   }
   add(ext(CrossSection.union(marks), 0, 0.01), 'コーチャーボックス・スリーフットライン', 'グラウンド', 'white');
@@ -502,7 +502,7 @@ const main = async () => {
     const isRoof = t.building === 'roof';
     const key = `${isRoof ? '屋根' : '建物'}|${roofC ?? ''}|${wallC ?? ''}|${glass}`;
     push(key, isRoof ? '屋根・ひさし' : 'スタンド', (nn, cc) => {
-      if (!isRoof && fieldWall(nn, cc)) return '#3a5b56'; // グラウンドに面した低い壁はフェンスと同じ濃い緑
+      if (!isRoof && !glass && minH < 1 && fieldWall(nn, cc)) return '#3a5b56'; // グラウンドに面した低い壁はフェンスと同じ濃い緑（ガラスの記者席・上の階は除く）
       if (nn.z > 0.3) return roofC ?? (isRoof ? 'galva-silver' : 'concrete');
       if (nn.z < -0.3) return isRoof ? 'steel-white' : 'concrete';
       return glass ? 'glass' : wallC ?? (isRoof ? 'steel-white' : 'concrete');
@@ -532,12 +532,11 @@ const main = async () => {
   // 名前のある席の名前を、その区画に付ける
   const named = seatsAll.filter((x) => x.it.tags.name).map((x) => x.it.tags.name);
   console.log('named seats', named);
+  const seatRings = seatsAll.length ? CrossSection.union(seatsAll.map((x) => x.c)).toPolygons() : [];
   add(union(treads), '観客席の段（コンクリート）', 'スタンド', (n, c) => {
     if (n.z > 0.5) return 'mortar-gray';
-    if (!fieldWall(n, c)) return 'concrete';
-    // 前を向いた立ち上がりは最前列だけ、横を向いた面（スタンドの端の壁・写真では緑の壁）は高さ 6m まで
-    const toF = (n.x * (FC[0] - c.x) + n.y * (FC[1] - c.y)) / Math.hypot(FC[0] - c.x, FC[1] - c.y);
-    return c.z < 2.0 || toF < 0.5 ? '#3a5b56' : 'concrete';
+    // スタンドの外側のふち（面の 0.4m 前がスタンドの外）でグラウンドから見える面はラバーと同じ濃い緑。段の立ち上がり（前が次の段）はコンクリート
+    return fieldWall(n, c) && !inRings(seatRings, c.x + n.x * 0.4, c.y + n.y * 0.4) ? '#3a5b56' : 'concrete';
   });
   add(union(seatBlocks), '座席（赤）', 'スタンド', 'paint-red');
   add(union(frontFences), 'スタンド前面のフェンス（濃い緑）', 'スタンド', '#3a5b56');
@@ -848,6 +847,15 @@ const main = async () => {
       const gap = offPitch(F0 + 2.2).subtract(offPitch(F0)).intersect(OF).subtract(SKW).subtract(LFW).subtract(standsU);
       add(Manifold.union([ext(fenceAll.subtract(LFW).add(fenceN), -0.1, HR), ext(fenceSK, -1.3, 0.25), ext(fenceSK, 1.8, HR)]), '外野フェンス（ラバー・連続）', 'スタンド', '#3a5b56');
       if (!gap.isEmpty()) add(ext(gap, -0.1, HR - 0.05), 'フェンスの裏（スタンドとのすき間）', 'スタンド', (n) => (n.z > 0.5 ? 'concrete' : '#3a5b56'));
+      {
+        // ポールの外（ファウル地域）もフェンスはウォーニングトラックに沿って切れずに続き、スタンドの前につながる（航空写真: くぼみはない）
+        const EXT = fan(-62, -45.6).add(fan(A_POLE, 62)).intersect(CrossSection.circle(400, 8).translate(home).subtract(CrossSection.circle(70, 96).translate(home)));
+        const stO = standsU.offset(0.02, 'Square');
+        const fenceExt = offPitch(F0).subtract(offPitch(WT)).intersect(EXT).subtract(stO);
+        const fillExt = offPitch(F0 + 14).subtract(offPitch(F0)).intersect(EXT).subtract(stO).subtract(SKW).subtract(LFW);
+        add(ext(fenceExt, -0.1, HR), 'ポールの外のフェンス（ラバー）', 'スタンド', '#3a5b56');
+        if (!fillExt.isEmpty()) add(ext(fillExt, -0.1, HR - 0.05), 'ポールの外のフェンスの裏', 'スタンド', (n) => (n.z > 0.5 ? 'concrete' : '#3a5b56'));
+      }
       {
         const c0 = rot(cf, A_END - 0.3);
         const c1 = rot(cf, A_END + 0.02);
@@ -1305,6 +1313,39 @@ const main = async () => {
         if (c2 && i > 0) pushDeco('スコアボード上の旗（模様）', c2, place(CrossSection.circle(0.36, 24), S(sc + 0.95), fz, t, off0 - 1.2 + 0.02, 0.01));
       });
       add(union(flagPoles), 'スコアボード上の旗竿', '広告・看板', 'steel-white');
+      // 裏側（球場の外・東向き）の看板（写真）: 灰色の板に「mazda」「ようこそ、ときめく広島へ。」と斜体の球場名 3 段、上に照明
+      {
+        const offB = Math.min(...ring.map((p) => (p[0] - A0[0]) * n[0] + (p[1] - A0[1]) * n[1])); // 裏の面（負）
+        const tB: P2 = [-t[0], -t[1]]; // 裏から見て右向き
+        const SB = (s2: number): P2 => [A0[0] + t[0] * s2 + n[0] * offB, A0[1] + t[1] * s2 + n[1] * offB];
+        const bp = (s0: number, s1: number, z0: number, z1: number, off: number, th: number, name: string, color: string) =>
+          pushDeco(name, color, place(rect(Math.abs(s1 - s0), z1 - z0), SB((s0 + s1) / 2), (z0 + z1) / 2, tB, off, th));
+        const bt = (str: string, sc: number, zc: number, size: number, maxW: number, color: string, italic = 0) => {
+          const r = textRings(str);
+          if (!r) return;
+          const rings = italic ? r.rings.map((q) => q.map(([x, y]) => [x + italic * y, y] as [number, number])) : r.rings;
+          let cs = new CrossSection(rings, 'NonZero');
+          const b = cs.bounds();
+          const k = Math.min(size / (b.max[1] - b.min[1]), maxW / (b.max[0] - b.min[0]));
+          cs = cs.translate([-(b.min[0] + b.max[0]) / 2, -(b.min[1] + b.max[1]) / 2]).scale(k);
+          pushDeco('スコアボード裏の看板（白文字）', color, place(cs, SB(sc), zc, tB, 0.08, 0.03));
+        };
+        bp(0, L, Z0, Z1, 0, 0.06, 'スコアボード裏の看板（灰色）', '#6b6f73');
+        const mid = L / 2;
+        bt('ようこそ、ときめく広島へ。', mid + 2, Z1 - 1.4, 1.3, 30, 'white');
+        bt('mazda', L - 4.5, Z1 - 1.4, 0.9, 5, 'white');
+        bt('MAZDA', mid, Z1 - 3.3, 1.3, 12, 'white', 0.25);
+        bt('zoom-zoom', mid, Z1 - 4.9, 1.3, 20, 'white', 0.25);
+        bt('スタジアム広島', mid, Z1 - 6.5, 1.3, 20, 'white', 0.25);
+        const lp: Mf[] = [];
+        for (let s2 = 3; s2 < L - 2; s2 += 4.2) {
+          const pp = SB(s2);
+          const nb: P2 = [-n[0] * 0.5, -n[1] * 0.5];
+          lp.push(Manifold.cylinder(1.6 + (Math.round(s2) % 2) * 1.2, 0.05, 0.05, 8).translate([pp[0] - nb[0] * 2, pp[1] - nb[1] * 2, Z1]));
+          lp.push(Manifold.cube([0.5, 0.35, 0.3], true).translate([pp[0] + nb[0], pp[1] + nb[1], Z1 + 0.5]));
+        }
+        add(union(lp), 'スコアボード裏の照明', '広告・看板', 'steel-white');
+      }
       console.log('scoreboard', L.toFixed(1), off0.toFixed(2), 'low', LS0.toFixed(1), LS1.toFixed(1));
     }
   }
