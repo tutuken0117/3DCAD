@@ -685,18 +685,42 @@ const main = async () => {
       // ネット裏（本塁の真後ろ）は席ではなく舞台のような平地（航空写真: 本塁裏の三角形の平らな所）
       const SW = 17;
       const stageCs = new CrossSection([ccw([home, at(rot(cf, 180 - SW), 45), at(rot(cf, 180), 46), at(rot(cf, 180 + SW), 45)])], 'Positive').intersect(keep).subtract(dugU);
-      for (let k = 0; k < 10; k++) {
-        const ringK = off((k + 1) * W).subtract(off(k * W)).intersect(keep).subtract(dugU).subtract(stageCs);
-        if (ringK.isEmpty()) continue;
-        const top = Math.max(-0.75, 1.85 - k * 0.33);
-        st2.push(ext(ringK, -1.1, top));
-        const seat = off(k * W + 0.55).subtract(off(k * W + 0.1)).intersect(keep).subtract(dugU).subtract(aisles).subtract(stageCs);
-        const back = off(k * W + 0.13).subtract(off(k * W + 0.05)).intersect(keep).subtract(dugU).subtract(aisles).subtract(stageCs);
-        if (!seat.isEmpty()) sk2.push(ext(seat, top, top + 0.42));
-        if (!back.isEmpty()) sk2.push(ext(back, top + 0.42, top + 0.82));
-        used = off((k + 1) * W);
+      // 写真: グラウンド側から 4 列だけ低い緑の座席（最前列の床はグラウンドより 0.75m 低い・1 列 0.3m 上がる）。
+      // その後ろは緑の壁（ビックカメラの広告）で、壁の上から赤い座席が 0.33m ずつ上る
+      const edge = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)); // グラウンド側のふち
+      const fromF = (o: number) => edge.offset(o, 'Round', 2, 64).intersect(keep);
+      const skR: Mf[] = [];
+      const NG = 4;
+      let usedF = fromF(0);
+      for (let j = 0; j < 16; j++) {
+        const ringJ = fromF((j + 1) * W).subtract(fromF(j * W)).subtract(dugU).subtract(stageCs);
+        if (ringJ.isEmpty()) continue;
+        const top = j < NG ? -0.75 + 0.3 * j : Math.min(2.0, 1.3 + 0.33 * (j - NG)); // 後ろのスタンドの最前列（約 2m）より高くしない
+        st2.push(ext(ringJ, -1.1, top));
+        const band2 = (a2: number, b2: number) => fromF((j + 1) * W - a2).subtract(fromF((j + 1) * W - b2)).subtract(dugU).subtract(aisles).subtract(stageCs);
+        const seat = band2(0.55, 0.1);
+        const back = band2(0.13, 0.05);
+        const dst = j < NG ? sk2 : skR;
+        if (!seat.isEmpty()) dst.push(ext(seat, top, top + 0.42));
+        if (!back.isEmpty()) dst.push(ext(back, top + 0.42, top + 0.82));
+        usedF = fromF((j + 1) * W);
       }
-      // 席の前（グラウンド側）の通路
+      used = keep.intersect(usedF);
+      // 緑の壁の広告（ビックカメラ）: 本塁から見た向きごとに、5 列目（壁）の前に
+      {
+        const wallRing = fromF((NG + 1) * W).subtract(fromF(NG * W)).subtract(dugU).subtract(stageCs);
+        for (const a of [180 - 70, 180 - 52, 180 - 34, 180 + 34, 180 + 52, 180 + 70]) {
+          const dd = rot(cf, a);
+          let r = 8;
+          while (r < 45 && !pointIn(wallRing, at(dd, r))) r += 0.2;
+          if (r >= 45) continue;
+          const p0 = at(dd, r - 0.03);
+          const nT: P2 = [-dd[0], -dd[1]];
+          const tc = textCs('ビックカメラ  BIC CAMERA', 0.36, 4.2);
+          if (tc) pushDeco('砂かぶり席の後ろの壁の広告（白文字）', 'white', place(tc, p0, 0.85, [-nT[1], nT[0]], 0.01, 0.02));
+        }
+      }
+      add(union(skR), '内野席の前の方の座席（赤）', 'スタンド', 'paint-red');
       const rest = keep.subtract(used).subtract(dugU).subtract(stageCs);
       if (!stageCs.isEmpty()) {
         // 写真: 本塁の真後ろは緑の低い建物（窓のある部屋）。屋根は平ら（舞台のような平地・高さ 2.2m）。前とフェンスの間は通路（床 -0.9m）
@@ -727,7 +751,7 @@ const main = async () => {
       }
       if (!rest.isEmpty()) st2.push(ext(rest, -1.1, -0.9));
       podiumPit = (podiumPit ? podiumPit.add(keep) : keep);
-      add(union(st2), '砂かぶり席の段（正面・一塁側・三塁側）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
+      add(union(st2), '砂かぶり席の段（正面・一塁側・三塁側）', 'スタンド', (n, c) => (n.z > 0.5 ? 'mortar-gray' : c.z < 1.4 ? '#3a5b56' : 'concrete')); // 壁（写真: 緑）
       add(union(sk2), '砂かぶり席の座席（正面砂かぶり・内野砂かぶり・緑の座席）', 'スタンド', '#2f6f4e');
       // 前のフェンス（ラバー）とネット: 台のグラウンド側のふち
       const fence = keep.offset(0.12, 'Round', 2, 64).subtract(keep).subtract(off(0.5)).subtract(dugU.offset(0.2));
@@ -751,7 +775,7 @@ const main = async () => {
           [b[0] - r, b[1] - r, b[2] - r], [b[0] + r, b[1] + r, b[2] + r], [b[0] - r, b[1] + r, b[2]], [b[0] + r, b[1] - r, b[2]],
         ]);
       // ネットの端（ダッグアウトの本塁寄りの端あたり）
-      const SPAN = 95;
+      const SPAN = 62; // 写真: ネットはベンチの手前、砂かぶり席の途中で終わる
       const samples: { p: P2; f: number }[] = [];
       for (let a = 180 - SPAN; a <= 180 + SPAN + 1e-6; a += 2.5) {
         const pp = netAt(a);
