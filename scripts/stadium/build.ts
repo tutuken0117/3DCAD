@@ -580,7 +580,7 @@ const main = async () => {
       for (const [dl2, sgn] of [[d1, 1], [d3, -1]] as [[number, number], number][]) {
         // 線から外側へ進んで席の前に当たる所
         const out2 = rot(dl2, sgn * -90);
-        const base0 = at(dl2, 21);
+        const base0 = at(dl2, 12); // 航空写真: ベンチは塁線に沿って本塁の横から 3〜21m
         let t = 3;
         while (t < 40 && !inFront([base0[0] + out2[0] * t, base0[1] + out2[1] * t])) t += 0.25;
         if (t >= 40) { console.log('dugout not found', sgn); continue; }
@@ -775,7 +775,7 @@ const main = async () => {
           [b[0] - r, b[1] - r, b[2] - r], [b[0] + r, b[1] + r, b[2] + r], [b[0] - r, b[1] + r, b[2]], [b[0] + r, b[1] - r, b[2]],
         ]);
       // ネットの端（ダッグアウトの本塁寄りの端あたり）
-      const SPAN = 62; // 写真: ネットはベンチの手前、砂かぶり席の途中で終わる
+      const SPAN = 52; // 写真: ネットはベンチの手前、砂かぶり席の途中で終わる
       const samples: { p: P2; f: number }[] = [];
       for (let a = 180 - SPAN; a <= 180 + SPAN + 1e-6; a += 2.5) {
         const pp = netAt(a);
@@ -947,15 +947,15 @@ const main = async () => {
           .intersect(fieldOfRear);
         if (!cap.isEmpty()) add(ext(cap, -0.1, 6.0), 'レフトスタンドのセンター側の壁', 'スタンド', '#3a5b56');
       }
-      add(ext(fenceSK, 0.25, 1.8), 'フェンスの金網（外野砂かぶり席の前）', 'スタンド', 'glass-clear');
+      add(ext(fenceSK.subtract(fenceSK.offset(-0.13, 'Round')), 0.25, 1.8), 'フェンスの金網（外野砂かぶり席の前）', 'スタンド', 'net-fence');
       // ポール際（外野砂かぶり席の前）もラバーの上にネットフェンス、最上部に黄色のライン
-      add(ext(fenceSK.subtract(fenceSK.offset(-0.13, 'Round')), HR, HR + 2.25), 'ポール際のネットフェンス', 'スタンド', 'net-black');
+      add(ext(fenceSK.subtract(fenceSK.offset(-0.13, 'Round')), HR, HR + 2.25), 'ポール際のネットフェンス', 'スタンド', 'net-fence');
       add(ext(fenceSK, HR + 2.25, HR + 2.37), 'ホームランライン（ポール際・黄色）', 'スタンド', 'paint-yellow');
       // ---- 外野フェンスの広告（写真の並び: SUNSTAR GUM・クマヒラ・ユウベル・福屋・キリンビバレッジ…）----
       {
         const ringF = offPitch(WT).toPolygons().sort((a2, b2) => b2.length - a2.length)[0];
         const angOf = (p: P2) => deg(Math.atan2(cf[0] * (p[1] - home[1]) - cf[1] * (p[0] - home[0]), cf[0] * (p[0] - home[0]) + cf[1] * (p[1] - home[1])));
-        const pts = ringF.filter((p) => Math.hypot(p[0] - home[0], p[1] - home[1]) > 85 && angOf(p) < 35.2 && angOf(p) > -44.5).sort((a2, b2) => angOf(b2) - angOf(a2));
+        const pts = ringF.filter((p) => Math.hypot(p[0] - home[0], p[1] - home[1]) > 85 && angOf(p) < 35.6 && angOf(p) > -45.7).sort((a2, b2) => angOf(b2) - angOf(a2));
         const pl = polyline(pts);
         // 写真の並び（白い文字・フェンスの緑の上に直接）
         // レフト側（左）→ ライト側（右）の順（写真のパノラマ）
@@ -990,10 +990,10 @@ const main = async () => {
             netF.push(place(rect(L, 2.2), mid, HR + 0.08 + 1.1, tt, -0.01, 0.02));
             netTop.push(place(rect(L + 0.05, 0.12), mid, HR + 2.3, tt, -0.06, 0.12)); // いちばん上は黄色（打球を見やすく）
           }
-          if (Math.round(s3) % 4 === 0) netP.push(Manifold.cylinder(2.25, 0.035, 0.035, 8).translate([q2[0], q2[1], HR + 0.05]));
+          if (Math.round(s3) % 4 === 0) netP.push(Manifold.cylinder(2.25, 0.05, 0.05, 8).translate([q2[0], q2[1], HR + 0.05]));
           prevP = q2;
         }
-        add(union(netF), '外野のネットフェンス（ラバーフェンスの上）', 'スタンド', 'net-black');
+        add(union(netF), '外野のネットフェンス（ラバーフェンスの上）', 'スタンド', 'net-fence');
         add(union(netP), 'ネットフェンスの支柱', 'スタンド', '#24282a');
         add(union(netTop), 'ホームランライン（ネットフェンスの最上部・黄色）', 'スタンド', 'paint-yellow');
         console.log('fence ads', k, 'fence len', pl.len.toFixed(0));

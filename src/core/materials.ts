@@ -93,6 +93,7 @@ export const MATERIALS: MaterialDef[] = [
   // 開口
   m('glass', 'ガラス（青み）', '開口', { color: '#9fc0d8', roughness: 0.05, metalness: 0, opacity: 0.28, pattern: 'plain', tile: 2 }),
   m('glass-clear', '透明ガラス', '開口', { color: '#d6e6ee', roughness: 0.03, metalness: 0, opacity: 0.12, pattern: 'plain', tile: 2 }),
+  m('net-fence', '黒い金網フェンス（外野）', '開口', { color: '#16191b', roughness: 0.95, metalness: 0, opacity: 0.42, pattern: 'plain', tile: 2 }),
   m('net-black', '黒いネット（防球ネット）', '開口', { color: '#15181a', roughness: 0.95, metalness: 0, opacity: 0.16, pattern: 'plain', tile: 2 }),
   m('glass-frosted', 'すりガラス', '開口', { color: '#e3e8eb', roughness: 0.6, metalness: 0, opacity: 0.85, pattern: 'plain', tile: 2 }),
   m('polycarbonate', 'ポリカ波板（明り取り）', '開口', { color: '#dfe6e8', roughness: 0.5, metalness: 0, opacity: 0.45, pattern: 'metal-vertical', tile: 1 }),
