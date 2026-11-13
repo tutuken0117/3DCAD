@@ -612,20 +612,36 @@ const main = async () => {
         // カメラマン席（ダッグアウトの外野寄りの横・写真）: 床 -0.9m の掘り込み。前はグラウンドから 0.9m の緑の塀（がんばれ!カープ SOGO）、
         // 中に明るい灰色のカメラ台（階段付き）、後ろ半分だけ灰色の屋根、奥の壁に緑のロッカーと棚
         {
-          const PB = R(12, 3.2, LEN / 2 + 0.4 + 6, -0.4);
+          // 砂かぶり席の帯（地図データ r8829147・奥行き 5〜7m、外野寄りほど細く曲がる）の前のふちに沿わせ、一般席にかからない奥行き 3.2m
+          const edgeAt = (a0: number): P2 => {
+            const b0 = at(dl2, a0);
+            let tt = 3;
+            while (tt < 40 && !pointIn(keep, [b0[0] + out2[0] * tt, b0[1] + out2[1] * tt])) tt += 0.1;
+            return [b0[0] + out2[0] * (tt + 0.15), b0[1] + out2[1] * (tt + 0.15)];
+          };
+          const E1 = edgeAt(12 + LEN / 2 + 0.6);
+          const E2 = edgeAt(12 + LEN / 2 + 0.6 + 10.5);
+          const Lp = Math.hypot(E2[0] - E1[0], E2[1] - E1[1]);
+          const uP: P2 = [(E2[0] - E1[0]) / Lp, (E2[1] - E1[1]) / Lp];
+          let nP: P2 = [-uP[1], uP[0]];
+          if (nP[0] * out2[0] + nP[1] * out2[1] < 0) nP = [-nP[0], -nP[1]];
+          const angP = deg(Math.atan2(uP[1], uP[0]));
+          const PP = (al: number, ow: number): P2 => [E1[0] + uP[0] * al + nP[0] * ow, E1[1] + uP[1] * al + nP[1] * ow];
+          const R3 = (w: number, h: number, al: number, ow: number) => CrossSection.square([w, h], true).rotate(angP).translate(PP(al, ow));
+          const D3 = 3.2;
+          const PB = R3(Lp, D3, Lp / 2, D3 / 2);
           dug.push(PB);
           dugSolids.push(ext(PB, FL - 0.15, FL));
-          pressWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 + 1.475), FL, 1.2), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 0.125, -0.4), FL, 1.2), ext(R(0.25, 3.2, LEN / 2 + 0.4 + 12 - 0.125, -0.4), FL, 1.2));
-          camWall.push(ext(R(12, 0.25, LEN / 2 + 0.4 + 6, -0.4 - 1.475), FL, 0.9)); // 前の塀（グラウンドから 0.9m、その上は開いている）
+          pressWall.push(ext(R3(Lp, 0.25, Lp / 2, D3 - 0.125), FL, 1.2), ext(R3(0.25, D3, 0.125, D3 / 2), FL, 1.2), ext(R3(0.25, D3, Lp - 0.125, D3 / 2), FL, 1.2));
+          camWall.push(ext(R3(Lp, 0.25, Lp / 2, 0.125), FL, 0.9)); // 前の塀（グラウンドから 0.9m、その上は開いている）
           {
-            const tF2: P2 = [out2[1], -out2[0]];
-            const C2 = (along: number, outw: number): P2 => [cx + dl2[0] * along + out2[0] * outw, cy + dl2[1] * along + out2[1] * outw];
-            const tc = textCs('がんばれ!カープ   SOGO', 0.42, 8);
-            if (tc) pushDeco('カメラマン席の前の広告（白文字）', 'white', place(tc, C2(LEN / 2 + 0.4 + 6, -0.4 - 1.6), 0.45, tF2, 0.01, 0.02));
+            const tF2: P2 = [nP[1], -nP[0]]; // 表がグラウンド側（-nP）を向く右向き
+            const tc = textCs('がんばれ!カープ   SOGO', 0.42, 7);
+            if (tc) pushDeco('カメラマン席の前の広告（白文字）', 'white', place(tc, PP(Lp / 2, -0.01), 0.45, tF2, 0.01, 0.02));
           }
-          pressRoof.push(ext(R(12.4, 1.7, LEN / 2 + 0.4 + 6, -0.4 + 0.85), 1.05, 1.2)); // 後ろ半分だけの屋根
-          pressWall.push(ext(R(5, 0.5, LEN / 2 + 0.4 + 4, -0.4 + 1.1), FL, FL + 1.3)); // ロッカー
-          pressDesk.push(ext(R(9, 1.3, LEN / 2 + 0.4 + 7, -0.4 - 0.3), FL, FL + 0.6), ext(R(0.8, 0.6, LEN / 2 + 0.4 + 2.1, -0.4 - 0.3), FL, FL + 0.3)); // カメラ台と階段
+          pressRoof.push(ext(R3(Lp + 0.4, 1.7, Lp / 2, D3 - 0.85), 1.05, 1.2)); // 後ろ半分だけの屋根
+          pressWall.push(ext(R3(5, 0.5, Lp / 2 - 2, D3 - 0.5), FL, FL + 1.3)); // ロッカー
+          pressDesk.push(ext(R3(Lp - 3, 1.3, Lp / 2 + 1, 1.3), FL, FL + 0.6), ext(R3(0.8, 0.6, 1.0, 1.3), FL, FL + 0.3)); // カメラ台と階段
         }
         // 写真（ベンチ）: 屋根の前の縁に白い MIZUNO、前の手すりに緑の帯の広告（デオデオ / DEODEO）と下の金網、
         // 屋根の上に客席を守る防球ネット（黒い細い柱と黒いネット）、中は緑の 1 人掛けの椅子
