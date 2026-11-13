@@ -667,7 +667,7 @@ const main = async () => {
             dugPole.push(Manifold.cylinder(2.9, 0.04, 0.04, 8).translate([pp[0], pp[1], 1.6]));
           }
           // 1 人掛けの椅子（緑）
-          for (let a = -LEN / 2 + 1.6; a < LEN / 2 - 1.4; a += 0.62) {
+          for (let a = -LEN / 2 + 1.6; a < LEN / 2 - 1.4; a += 0.8) {
             const pp = C(a, DEP / 2 - 0.62);
             dugChair.push(Manifold.cube([0.5, 0.45, 0.08], true).rotate([0, 0, ang]).translate([pp[0], pp[1], FL + 0.45]));
             const pb = C(a, DEP / 2 - 0.4);
