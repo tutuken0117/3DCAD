@@ -365,6 +365,7 @@ const main = async () => {
   type Seat = { it: Item; c: Cs; z0: number; h: number; rh: number; dir: number; az: number; dist: number };
   const seatsAll: Seat[] = [];
   const treads: Mf[] = [];
+  const precastT: Mf[] = [];
   const seatBlocks: Mf[] = [];
   const tatami: Mf[] = [];
   const frontFences: Mf[] = [];
@@ -381,6 +382,11 @@ const main = async () => {
     const n = mode === 'terrace' ? Math.max(2, Math.round(s.rh / 0.9)) : Math.max(2, Math.round(L / 0.85));
     const D = L / n;
     const tsol: Mf[] = [];
+    // 外野の高い所にあるスタンド（カープパフォーマンス席・ビジターパフォーマンス席）は、プレキャストの段を柱で持ち上げた形。
+    // 段は厚さ 0.4m の板にして、外から段の裏側（ギザギザ）が見えるように
+    const cc0 = centroid(s.it);
+    const fromCf = Math.abs(deg(Math.atan2(cf[0] * (cc0[1] - home[1]) - cf[1] * (cc0[0] - home[0]), cf[0] * (cc0[0] - home[0]) + cf[1] * (cc0[1] - home[1]))));
+    const precast = s.z0 >= 3 && s.dist > 85 && fromCf < 62;
     // グラウンドに面した 1 階スタンドは、前面を濃い緑のフェンスにする（地図データの壁の色 #3a5b56）
     const outfieldStand = Math.abs(((s.az - azOf(at(cf, 50)) + 540) % 360) - 180) < 47 && s.dist > 85;
     const hasFence = (mode === 'seats' || mode === 'terrace') && s.z0 < 1 && !outfieldStand; // 地図データに色がない区画（両翼のファウル側）も同じ濃い緑に
@@ -394,7 +400,7 @@ const main = async () => {
       if (piece.isEmpty() || top - s.z0 < 0.02) continue;
       // 鯉桟敷は最上段だけ（公式座席図）。それより下は普通の座席
       const m = mode === 'tatami' && j >= Math.max(3, Math.round(n * 0.3)) ? 'seats' : mode;
-      (m === 'seats' ? treads : tsol).push(ext(piece, s.z0, top));
+      (m === 'seats' ? (precast ? precastT : treads) : tsol).push(ext(piece, precast ? Math.max(s.z0, top - 0.4) : s.z0, top));
       if (m === 'seats' && D > 0.6) {
         const sb = s0 + j * D;
         const seat = s.c.intersect(band(d, sb + 0.1, sb + Math.min(0.55, D - 0.25))).subtract(aisles);
@@ -538,6 +544,7 @@ const main = async () => {
     // スタンドの外側のふち（面の 0.4m 前がスタンドの外）でグラウンドから見える面はラバーと同じ濃い緑。段の立ち上がり（前が次の段）はコンクリート
     return fieldWall(n, c) && !inRings(seatRings, c.x + n.x * 0.4, c.y + n.y * 0.4) ? '#3a5b56' : 'concrete';
   });
+  add(union(precastT), 'パフォーマンス席の段（プレキャスト・裏が見える）', 'スタンド', (n) => (n.z > 0.5 ? 'mortar-gray' : 'concrete'));
   add(union(seatBlocks), '座席（赤）', 'スタンド', 'paint-red');
   add(union(frontFences), 'スタンド前面のフェンス（濃い緑）', 'スタンド', '#3a5b56');
   add(union(tatami), '鯉桟敷（畳・掘りごたつ）', 'スタンド', (n) => (n.z > 0.5 ? 'tatami' : 'wood-light'));
@@ -1202,11 +1209,12 @@ const main = async () => {
     }
   }
 
-  // 2 階スタンドの屋根の上の太陽光パネル（濃い青・1.7m おきの列）
+  // 内野 2 階スタンドの屋根の上の太陽光パネル（濃い青・1.7m おきの列）
   {
     const panels: Mf[] = [];
     for (const it of partItems) {
       if (it.tags.building !== 'roof' || (num(it.tags.min_height) ?? 0) < 24) continue;
+      if (!/^r88612[1-5]\d$/.test(it.id)) continue; // 内野 2 階スタンドの屋根だけ（ビジターパフォーマンス席の屋根 r91078xx には無い）
       const c = shape(it);
       if (!c) continue;
       const h = num(it.tags.height) ?? 25.25;
