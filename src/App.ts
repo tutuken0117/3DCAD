@@ -692,7 +692,9 @@ export class App {
     try {
       this.ui.toast('見本のモデルを読み込んでいます…（数秒かかります）', 6000);
       // .gz の拡張子だと、サーバーによっては勝手に展開して送ってくるので、独自の拡張子にしている
-      const res = await fetch(`./models/${name}.3dcadz`);
+      // 固定URLで差し替える見本も、別端末ですぐ最新版を確認できるよう
+      // HTTPキャッシュを使わず毎回取得する。
+      const res = await fetch(`./models/${name}.3dcadz`, { cache: 'no-store' });
       if (!res.ok) throw new Error('見本のモデルが見つかりません');
       const buf = new Uint8Array(await res.arrayBuffer());
       const gz = buf[0] === 0x1f && buf[1] === 0x8b;
