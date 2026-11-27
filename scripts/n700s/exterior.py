@@ -263,6 +263,12 @@ def ws_cut(z):
     return -7.30 - 0.0 + 0.30 * t * t
 
 
+def ws_front(z):
+    """前面窓の前の端（x）。ほぼまっすぐで、両端だけ少し後ろへ"""
+    t = min(1.0, abs(z) / 0.80)
+    return -8.30 + 0.15 * t * t
+
+
 def windshield_shorten(b):
     """運転士の頭上（窓の後ろ寄り）のガラスを白い屋根にし、窓を前寄りだけにする。後ろの縁に黒い縁取り"""
     m = b.m
@@ -274,7 +280,7 @@ def windshield_shorten(b):
         p = [V[i] for i in f['loop']]
         cx = sum(q[1] for q in p) / len(p)
         cz = sum(q[3] for q in p) / len(p)
-        if cx > ws_cut(cz):
+        if cx > ws_cut(cz) or cx < ws_front(cz):
             f['color'] = '#f5f7f7'
         for k in range(1, len(p) - 1):
             tris.append((p[0], p[k], p[k + 1]))
@@ -297,21 +303,28 @@ def windshield_shorten(b):
             best = y if best is None else max(best, y)
         return best
 
-    b.begin('前面窓の後ろの縁（黒い縁取り）', 'Glazing')
+    b.begin('前面窓の前後の縁（黒い縁取り）', 'Glazing')
     n = 44
     w = 0.028
-    for off, flip in ((0.006, False), (-0.006, True)):
-        prev = None
-        for k in range(n + 1):
-            z = -0.74 + 1.48 * k / n
-            x0 = ws_cut(z) - w / 2
-            x1 = ws_cut(z) + w / 2
-            y0, y1 = gy(x0, z), gy(x1, z)
-            cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
-            if prev and cur:
-                q = [prev[0], cur[0], cur[1], prev[1]]
-                b.face(list(reversed(q)) if flip else q, '#18262d', True)
-            prev = cur
+    for edge, zmax in ((ws_cut, 0.74), (ws_front, 0.76)):
+        for off, flip in ((0.006, False), (-0.006, True)):
+            prev = None
+            for k in range(n + 1):
+                z = -zmax + 2 * zmax * k / n
+                x0 = edge(z) - w / 2
+                x1 = edge(z) + w / 2
+                y0, y1 = gy(x0, z), gy(x1, z)
+                cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
+                if prev and cur:
+                    q = [prev[0], cur[0], cur[1], prev[1]]
+                    b.face(list(reversed(q)) if flip else q, '#18262d', True)
+                prev = cur
+    # ワイパーを窓の下の縁へ（前を切り詰めた分だけ後ろへずらし、斜面に合わせて上げる）
+    for v in m['vertices']:
+        if len(v) > 4 and v[4] in (900008, 900009):
+            v[1] = round(v[1] + 0.42, 6)
+            v[2] = round(v[2] + 0.12, 6)
+    b.vkey = {}
 
 
 RIDGE_ON = Curve([(0.0, 0.0), (0.35, 0.0), (1.2, 1.0), (4.3, 1.0), (5.0, 0.0), (99, 0.0)])
@@ -329,12 +342,12 @@ def nose_ridge(b):
             continue
         t, bt = TOP(x), BOT(x)
         h = (y - bt) / max(0.05, t - bt)
-        wh = min(1.0, max(0.0, (h - 0.55) / 0.25))
+        wh = min(1.0, max(0.0, (h - 0.45) / 0.25))
         wh = wh * wh * (3 - 2 * wh)
         if wh <= 0:
             continue
         az = abs(z)
-        dy = 0.070 * math.exp(-(az / 0.10) ** 2) - 0.085 * math.exp(-((az - 0.40) / 0.20) ** 2) + 0.03 * math.exp(-((az - 0.85) / 0.18) ** 2)
+        dy = 0.10 * math.exp(-(az / 0.075) ** 2) - 0.13 * math.exp(-((az - 0.36) / 0.19) ** 2) + 0.05 * math.exp(-((az - 0.85) / 0.18) ** 2)
         v[2] = round(y + g * wh * dy, 6)
     b.vkey = {}
 
@@ -342,7 +355,8 @@ def nose_ridge(b):
 def build(b):
     # 外板・先頭形状・前面窓の形・前照灯・青帯は R23 のまま（実車にいちばん近い）。
     # ・前面窓の後ろ寄り（運転士の頭上）は白い屋根にして、境目に黒い縁取り（柱などはそのまま）
-    # ・鼻先の上面に中央の稜線と左右の浅いくぼみ
+    # ・前の端は鼻先の斜面まで伸ばさず、ほぼまっすぐな縁で切る（窓の前は白いボンネット）
+    # ・鼻先の上面に、窓の下の中央から先端へ通る稜線と、その左右のくぼみ
     windshield_shorten(b)
     nose_ridge(b)
 
