@@ -236,7 +236,92 @@ def new_headlights(b):
             b.poly(fr, circle2(ax, 0.0, 0.075, 28), 'mat:light', 0.008)
 
 
+def windshield_clean(b):
+    """前面窓の中を横切る柱と、後ろ寄りの四角い枠を外して 1 枚のガラスにする（外周の黒い縁は残す）"""
+    m = b.m
+    V = {v[0]: v for v in m['vertices']}
+    n = 0
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        c = f['color']
+        if c not in ('#18262d', '#20353c'):
+            continue
+        p = [V[i] for i in f['loop']]
+        cx = sum(q[1] for q in p) / len(p)
+        cz = abs(sum(q[3] for q in p) / len(p))
+        strut = c == '#20353c' or (cx > -7.28 and cz < 0.56)
+        if strut:
+            f['color'] = 'mat:glass-clear'
+            n += 1
+    return n
+
+
+def ws_cut(z):
+    """前面窓の後ろの縁（x）。真ん中が後ろへふくらむ弧"""
+    t = min(1.0, abs(z) / 0.88)
+    return -7.30 - 0.0 + 0.30 * t * t
+
+
+def windshield_shorten(b):
+    """運転士の頭上（窓の後ろ寄り）のガラスを白い屋根にし、窓を前寄りだけにする。後ろの縁に黒い縁取り"""
+    m = b.m
+    V = {v[0]: v for v in m['vertices']}
+    tris = []
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        p = [V[i] for i in f['loop']]
+        cx = sum(q[1] for q in p) / len(p)
+        cz = sum(q[3] for q in p) / len(p)
+        if cx > ws_cut(cz):
+            f['color'] = '#f5f7f7'
+        for k in range(1, len(p) - 1):
+            tris.append((p[0], p[k], p[k + 1]))
+
+    def gy(x, z):
+        best = None
+        for a_, b_, c_ in tris:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + l3 * c_[2]
+            best = y if best is None else max(best, y)
+        return best
+
+    b.begin('前面窓の後ろの縁（黒い縁取り）', 'Glazing')
+    n = 44
+    w = 0.05
+    for off, flip in ((0.006, False), (-0.006, True)):
+        prev = None
+        for k in range(n + 1):
+            z = -0.86 + 1.72 * k / n
+            x0 = ws_cut(z) - w / 2
+            x1 = ws_cut(z) + w / 2
+            y0, y1 = gy(x0, z), gy(x1, z)
+            cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
+            if prev and cur:
+                q = [prev[0], cur[0], cur[1], prev[1]]
+                b.face(list(reversed(q)) if flip else q, '#18262d', True)
+            prev = cur
+
+
 def build(b):
+    # 外板・先頭形状・前照灯・青帯は R23 のまま（実車に近い）。前面窓の柱を外し、窓を前寄りだけにする
+    windshield_clean(b)
+    windshield_shorten(b)
+
+
+def build_r26(b):
+    """（使わない）R26 で試した手直し: くちばしを広げる・前照灯・青帯"""
     b.remove_groups([900004, 900005])   # 鼻先まで伸びていた青帯
     widen_nose(b)
     b.remove_groups(HEADLIGHTS)        # 前の前照灯（側面向き）は作り直す
