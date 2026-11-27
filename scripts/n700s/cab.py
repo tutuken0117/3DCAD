@@ -416,7 +416,7 @@ def build(b):
     b.begin('運転室・前面窓の上の天井（ガラスに沿った内張り）', L)
     m = b.m
     V = {v[0]: v for v in m['vertices']}
-    X_FROM = -7.30
+    X_FROM = -7.10
     # ガラスの三角形（上から見た xz で、その点の高さを測る）
     tris = []
     for f in m['faces']:

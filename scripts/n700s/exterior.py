@@ -365,13 +365,19 @@ def blunt_nose(b):
 
 
 def ws_front_v(z):
-    """前面窓の前の縁（x）: 前へとがる形"""
-    t = min(1.0, abs(z) / 0.88)
-    return -8.66 + 1.20 * t ** 1.3
+    """前面窓の前の縁（x）: 先が丸くすぼまる涙のような形"""
+    t = min(1.0, abs(z) / 0.86)
+    return -8.62 + 1.22 * t * t
+
+
+def ws_rear(z):
+    """前面窓の上（後ろ）の縁（x）: 真ん中が前へへこみ、左右へ行くほど後ろへ流れる弧"""
+    t = min(1.0, abs(z) / 0.84)
+    return -7.12 + 0.50 * t ** 2.2
 
 
 def windshield_shape(b):
-    """前面窓: 前へとがる形にし（前は白いボディ）、後ろの真ん中の四角（灰色に見えていた所）を白い屋根に。左右のそり込みは残す"""
+    """前面窓の輪郭を、前は丸くすぼまり上（後ろ）は弧を描くなめらかな曲線にする。輪郭の外は白いボディ"""
     m = b.m
     V = {v[0]: v for v in m['vertices']}
     tris = []
@@ -381,10 +387,10 @@ def windshield_shape(b):
         p = [V[i] for i in f['loop']]
         cx = sum(q[1] for q in p) / len(p)
         cz = sum(q[3] for q in p) / len(p)
-        if cx < ws_front_v(cz):
+        if cx < ws_front_v(cz) or cx > ws_rear(cz):
             f['color'] = '#f5f7f7'
-        elif f['color'] == 'mat:glass-clear' and cx > -7.22 and abs(cz) < 0.46:
-            f['color'] = '#f5f7f7'
+        elif f['color'] == '#20353c' or (f['color'] == '#18262d' and abs(cz) < 0.40):
+            f['color'] = 'mat:glass-clear'   # 窓の中を横切る桟は外す（左右の窓との仕切りは残す）
         for k in range(1, len(p) - 1):
             tris.append((p[0], p[k], p[k + 1]))
 
@@ -406,21 +412,81 @@ def windshield_shape(b):
             best = y if best is None else max(best, y)
         return best
 
-    b.begin('前面窓の前の縁（とがった形・黒い縁取り）', 'Glazing')
-    n = 60
+    # 窓の後ろの真ん中は外板に穴が空いていた（灰色に見えていたのは中の枠）。屋根と同じ白い面でふさぐ
+    shell_tris = []
+    for f in m['faces']:
+        p = [V[i] for i in f['loop']]
+        if p[0][4] != 900001 or max(q[1] for q in p) < -7.4 or min(q[1] for q in p) > -6.0:
+            continue
+        for k in range(1, len(p) - 1):
+            shell_tris.append((p[0], p[k], p[k + 1]))
+
+    def sy(x, z):
+        best = None
+        for a_, b_, c_ in shell_tris:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + l3 * c_[2]
+            if y > 2.9:
+                best = y if best is None else max(best, y)
+        return best
+
+    b.begin('前面窓の後ろの屋根（穴をふさぐ白い面）', 'N700S body')
+    nz = 32
+    cols = []
+    for j in range(nz + 1):
+        z = -0.70 + 1.40 * j / nz
+        xr = ws_rear(z) - 0.02
+        yf = gy(xr, z)
+        xs = xr
+        while yf is None and xs > xr - 0.3:   # その真上にガラスがなければ、少し前のガラスの高さから
+            xs -= 0.01
+            yf = gy(xs, z)
+        if yf is not None and xs < xr:
+            xr = xs
+        xb, yb = None, None
+        for xt in (-6.30, -6.20, -6.10, -6.00, -5.9, -5.8, -5.7, -5.6):
+            y = sy(xt, z)
+            if y is not None:
+                xb, yb = xt, y
+                break
+        if yf is None or xb is None:
+            cols.append(None)
+            continue
+        cols.append([(xr + (xb - xr) * t / 12, max(yf + (yb - yf) * t / 12, (sy(xr + (xb - xr) * t / 12, z) or 0)) + 0.004, z) for t in range(13)])
+    for j in range(nz):
+        a_, c_ = cols[j], cols[j + 1]
+        if a_ is None or c_ is None:
+            continue
+        for t in range(12):
+            q = [a_[t], c_[t], c_[t + 1], a_[t + 1]]
+            b.face(q, '#f5f7f7', True)
+
+    b.begin('前面窓の縁取り（なめらかな輪郭）', 'Glazing')
+    n = 70
     w = 0.03
-    for off, flip in ((0.006, False), (-0.006, True)):
-        prev = None
-        for k in range(n + 1):
-            z = -0.87 + 1.74 * k / n
-            x0 = ws_front_v(z) - w / 2
-            x1 = ws_front_v(z) + w / 2
-            y0, y1 = gy(x0, z), gy(x1, z)
-            cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
-            if prev and cur:
-                q = [prev[0], cur[0], cur[1], prev[1]]
-                b.face(list(reversed(q)) if flip else q, '#18262d', True)
-            prev = cur
+    for edge, zmax in ((ws_front_v, 0.85), (ws_rear, 0.83)):
+        for off, flip in ((0.006, False), (-0.006, True)):
+            prev = None
+            for k in range(n + 1):
+                z = -zmax + 2 * zmax * k / n
+                x0 = edge(z) - w / 2
+                x1 = edge(z) + w / 2
+                y0, y1 = gy(x0, z), gy(x1, z)
+                cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
+                if prev and cur:
+                    q = [prev[0], cur[0], cur[1], prev[1]]
+                    b.face(list(reversed(q)) if flip else q, '#18262d', True)
+                prev = cur
 
 
 def build(b):
