@@ -93,7 +93,7 @@ def main(src, dst, parts):
         saloon.build(b)
     if 'track' in parts:
         track.build(b)
-    data['name'] = 'N700S 1号車 R27'
+    data['name'] = 'N700S 1号車 R28'
     save(data, dst)
     m = data['model']
     print('vertices', len(m['vertices']), 'edges', len(m['edges']), 'faces', len(m['faces']), 'groups', len(m['groups']))

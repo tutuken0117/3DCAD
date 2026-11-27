@@ -315,9 +315,9 @@ def windshield_shorten(b):
 
 
 def build(b):
-    # 外板・先頭形状・前照灯・青帯は R23 のまま（実車に近い）。前面窓の柱を外し、窓を前寄りだけにする
-    windshield_clean(b)
-    windshield_shorten(b)
+    # 外板・先頭形状・前面窓・前照灯・青帯はすべて R23 のまま（実車にいちばん近い）。
+    # R26（くちばしを広げる）・R27（前面窓の柱を外し短くする）の手直しは使わない
+    return
 
 
 def build_r26(b):
