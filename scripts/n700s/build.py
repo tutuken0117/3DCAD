@@ -15,6 +15,7 @@ import saloon  # noqa: E402
 import track  # noqa: E402
 import shell  # noqa: E402
 import bogie  # noqa: E402
+import exterior  # noqa: E402
 
 # 作り直すために消す、もとのモデルのグループ
 OLD_CAB = [
@@ -71,7 +72,9 @@ def main(src, dst, parts):
         shell.seams_and_marks(b)
         shell.deflector(b)
         bogie.build(b)
-    elif 'bogie' in parts:
+    if 'exterior' in parts and 'shell' not in parts:
+        exterior.build(b)
+    if 'bogie' in parts and 'shell' not in parts:
         # 外板は R23 までのもの（先頭形状は実車に近いと好評）のまま、台車だけ作り直す
         b.remove_groups([900316, 900317])
         bogie.build(b)
@@ -90,12 +93,12 @@ def main(src, dst, parts):
         saloon.build(b)
     if 'track' in parts:
         track.build(b)
-    data['name'] = 'N700S 1号車 R25'
+    data['name'] = 'N700S 1号車 R26'
     save(data, dst)
     m = data['model']
     print('vertices', len(m['vertices']), 'edges', len(m['edges']), 'faces', len(m['faces']), 'groups', len(m['groups']))
 
 
 if __name__ == '__main__':
-    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'bogie,cab,lav,saloon,track').split(','))
+    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'exterior,bogie,cab,lav,saloon,track').split(','))
     main(sys.argv[1], sys.argv[2], parts)
