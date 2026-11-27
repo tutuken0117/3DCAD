@@ -188,6 +188,10 @@ def seg7(text, x, y, h, gap=0.35):
     w = h / 2
     out = []
     for ch in text:
+        if ch == '.':
+            out.append(rect2(x - w * 0.15, x + w * 0.05, y, y + w * 0.2))
+            x += w * 0.3
+            continue
         if ch == ':':
             out.append(rect2(x + w * 0.2, x + w * 0.4, y + h * 0.25, y + h * 0.35))
             out.append(rect2(x + w * 0.2, x + w * 0.4, y + h * 0.65, y + h * 0.75))

@@ -26,6 +26,10 @@ C_SEAT = '#3a4656'
 C_SEAT_DARK = '#2c3541'
 C_TICK = '#e8ecef'
 
+# 場面: 名古屋に着く直前（客室の案内表示「まもなく 名古屋です」に合わせる）
+SPEED = 165  # いまの速度 km/h
+ATC = 170    # ATC の許容速度
+
 
 def lcd_frame(b, fr, a0, a1, b0, b1):
     """液晶のベゼル（黒い縁）と画面の地"""
@@ -34,7 +38,7 @@ def lcd_frame(b, fr, a0, a1, b0, b1):
 
 
 def speedometer(b, fr, cx, cy, w, h):
-    """速度計（液晶）: 0〜360 km/h の丸い目盛・針・ATC 信号 285・いまの速度 283"""
+    """速度計（液晶）: 0〜360 km/h の丸い目盛・針。名古屋に着く前の減速中（ATC 170・いまの速度 165・ブレーキ B3）"""
     lcd_frame(b, fr, cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2)
     L = 0.006
     gx, gy = cx - w * 0.12, cy - h * 0.04
@@ -63,16 +67,16 @@ def speedometer(b, fr, cx, cy, w, h):
         for p in seg7(s, x0, y0, hh):
             b.poly(fr, p, 'mat:lcd-white', L + 0.0004)
     # いまの速度までの帯（白）
-    b.poly(fr, arcband2(gx, gy, R * 1.03, R * 1.09, v2a(283), 225, 40), 'mat:lcd-white', L)
-    # ATC 許容速度 285 の印（緑の三角）と、緑の丸で囲んだ 285
-    t = math.radians(v2a(285))
+    b.poly(fr, arcband2(gx, gy, R * 1.03, R * 1.09, v2a(SPEED), 225, 40), 'mat:lcd-white', L)
+    # ATC 許容速度の印（緑の三角）と、緑の丸で囲んだ数字
+    t = math.radians(v2a(ATC))
     ca, sa = math.cos(t), math.sin(t)
     tip = (gx + R * 1.03 * ca, gy + R * 1.03 * sa)
     base = (gx + R * 1.22 * ca, gy + R * 1.22 * sa)
     nx, ny = -sa * R * 0.08, ca * R * 0.08
     b.poly(fr, [tip, (base[0] + nx, base[1] + ny), (base[0] - nx, base[1] - ny)], 'mat:lcd-green', L + 0.0006)
     # 針（オレンジ）
-    t = math.radians(v2a(283))
+    t = math.radians(v2a(SPEED))
     ca, sa = math.cos(t), math.sin(t)
     hw = 0.0022
     b.poly(fr, [(gx - hw * sa, gy + hw * ca), (gx + R * 0.95 * ca - hw * 0.4 * sa, gy + R * 0.95 * sa + hw * 0.4 * ca),
@@ -80,7 +84,7 @@ def speedometer(b, fr, cx, cy, w, h):
     b.poly(fr, circle2(gx, gy, R * 0.07, 16), 'mat:lcd-gray', L + 0.001)
     # 中央下に今の速度（白い数字）と km/h
     hh = R * 0.30
-    for p in seg7('283', gx - 3 * hh / 2 * 1.35 / 2, gy - R * 0.62, hh):
+    for p in seg7(str(SPEED), gx - 3 * hh / 2 * 1.35 / 2, gy - R * 0.62, hh):
         b.poly(fr, p, 'mat:lcd-white', L + 0.0006)
     b.text(fr, 'km/h', gx, gy - R * 0.85, R * 0.14, 'mat:lcd-gray', L + 0.0006, 'center')
     # 右側: ATC 信号（緑の丸に 285）
@@ -88,13 +92,13 @@ def speedometer(b, fr, cx, cy, w, h):
     rr = h * 0.17
     b.poly(fr, arcband2(ax, ay, rr * 0.86, rr, 0, 360, 32)[:-1], 'mat:lcd-green', L)
     hh = rr * 0.75
-    for p in seg7('285', ax - 3 * hh / 2 * 1.35 / 2 + hh * 0.08, ay - hh / 2, hh):
+    for p in seg7(str(ATC), ax - 3 * hh / 2 * 1.35 / 2 + hh * 0.08, ay - hh / 2, hh):
         b.poly(fr, p, 'mat:lcd-green', L + 0.0004)
     b.text(fr, 'ATC', ax, ay + rr * 1.15, rr * 0.45, 'mat:lcd-white', L, 'center')
     # その下: 定速（緑）・ノッチ表示
-    b.rect(fr, ax - rr, ax + rr, cy - h * 0.20, cy - h * 0.10, 'mat:lcd-green', L)
-    b.text(fr, '定速', ax, cy - h * 0.193, h * 0.08, '#0b1a33', L + 0.0005, 'center')
-    b.text(fr, 'P7', ax, cy - h * 0.38, h * 0.12, 'mat:lcd-white', L, 'center')
+    b.rect(fr, ax - rr, ax + rr, cy - h * 0.20, cy - h * 0.10, 'mat:lcd-yellow', L)
+    b.text(fr, 'ブレーキ', ax, cy - h * 0.193, h * 0.07, '#0b1a33', L + 0.0005, 'center')
+    b.text(fr, 'B3', ax, cy - h * 0.38, h * 0.12, 'mat:lcd-yellow', L, 'center')
 
 
 def monitor(b, fr, a0, a1, b0, b1, kind):
@@ -140,16 +144,16 @@ def monitor(b, fr, a0, a1, b0, b1, kind):
         # 路線図（駅と現在位置）
         yl = b0 + H * 0.62
         b.rect(fr, a0 + W * 0.05, a1 - W * 0.05, yl - 0.0012, yl + 0.0012, 'mat:lcd-white', L)
-        names = ['名古屋', '岐阜羽島', '米原', '京都', '新大阪']
+        names = ['浜松', '豊橋', '三河安城', '名古屋', '岐阜羽島']
         for k, nm in enumerate(names):
             x = a0 + W * (0.08 + k * 0.21)
             b.poly(fr, circle2(x, yl, H * 0.025, 12), 'mat:lcd-white', L + 0.0004)
             b.text(fr, nm, x, yl + H * 0.06, H * 0.05, 'mat:lcd-white', L, 'center')
-        xp = a0 + W * 0.40
+        xp = a0 + W * 0.64
         b.poly(fr, [(xp, yl - H * 0.03), (xp - H * 0.03, yl - H * 0.09), (xp + H * 0.03, yl - H * 0.09)], 'mat:lcd-yellow', L + 0.0006)
-        b.text(fr, '次 米原 通過', a0 + W * 0.05, b0 + H * 0.36, H * 0.065, 'mat:lcd-yellow', L)
-        b.text(fr, '新大阪 着 14:52', a0 + W * 0.05, b0 + H * 0.24, H * 0.065, 'mat:lcd-white', L)
-        for p in seg7('412.3', a1 - W * 0.36, b0 + H * 0.24, H * 0.075):
+        b.text(fr, '次 名古屋 停車', a0 + W * 0.05, b0 + H * 0.36, H * 0.065, 'mat:lcd-yellow', L)
+        b.text(fr, '名古屋 着 14:25', a0 + W * 0.05, b0 + H * 0.24, H * 0.065, 'mat:lcd-white', L)
+        for p in seg7('362.4', a1 - W * 0.36, b0 + H * 0.24, H * 0.075):
             b.poly(fr, p, 'mat:lcd-green', L)
         b.text(fr, 'km', a1 - W * 0.06, b0 + H * 0.24, H * 0.05, 'mat:lcd-gray', L, 'right')
 
@@ -266,7 +270,7 @@ def build(b):
     fr_c, _, _ = facets[0]
     speedometer(b, fr_c, 0.0, 0.285, 0.54, 0.33)
     # 上の一列: 表示灯（ATC・戸閉・定速・非常・故障・EB）
-    lamps = [('ATC', 'mat:lcd-green'), ('戸閉', 'mat:lcd-yellow'), ('定速', 'mat:lcd-green'), ('非常', '#4a1a18'),
+    lamps = [('ATC', 'mat:lcd-green'), ('戸閉', 'mat:lcd-yellow'), ('定速', '#1d3a22'), ('非常', '#4a1a18'),
              ('故障', '#4a3a12'), ('EB', '#4a3a12'), ('ATS', '#1d3a22'), ('保安', '#1d3a22')]
     for k, (t, c) in enumerate(lamps):
         a = -0.36 + k * 0.091
@@ -324,8 +328,10 @@ def build(b):
     handle_base(b, hx0, hx1, zc)
     labels = ['運転', '1', '', '', '4', '', '', '7', '非常']
     handle_scale(b, hx1 - 0.04, hx0 + 0.04, zc, -1, labels, True)
-    pivot = (hx1 - 0.06, DESK_TOP + 0.03, zc)
-    tip = (hx1 - 0.03, DESK_TOP + 0.17, zc)
+    # ブレーキは 3 段（B3）に入れた位置
+    xn = (hx1 - 0.04) + ((hx0 + 0.04) - (hx1 - 0.04)) * 3 / 8
+    pivot = (xn, DESK_TOP + 0.03, zc)
+    tip = (xn + 0.01, DESK_TOP + 0.17, zc)
     b.tube([pivot, tip], 0.012, '#8e959b', 10)
     b.box(pivot[0] - 0.03, pivot[0] + 0.03, DESK_TOP + 0.05, DESK_TOP + 0.065, zc - 0.03, zc + 0.03, '#1b1c1e')
     kfr = Frame(tip, (1, 0, 0), (0, 0, -1))  # n = +y
