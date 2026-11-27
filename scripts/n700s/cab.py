@@ -261,11 +261,11 @@ def build(b):
             p = fr.p(a, hgt, -0.07)
             edge.append((p[0], p[2]))
     edge.sort(key=lambda q: -q[1])
-    dash = edge + [(-8.55, -0.70), (-8.55, 0.70)]
-    b.prism(top_fr, ab(dash), DESK_TOP + 0.3, 2.43, C_DASH, side='#2f3337')
+    dash = edge + [(-8.40, -0.60), (-8.40, 0.60)]
+    b.prism(top_fr, ab(dash), DESK_TOP + 0.3, 2.40, C_DASH, side='#2f3337')
     # 窓の下の見切り（斜め）
-    sl = Frame((-8.55, 2.43, 0), (0, 0, -1), (-1, 0.75, 0))
-    b.obox(sl, -0.66, 0.66, 0.0, 0.10, 0.0, 0.01, '#202326')
+    sl = Frame((-8.40, 2.40, 0), (0, 0, -1), (-1, 0.75, 0))
+    b.obox(sl, -0.58, 0.58, 0.0, 0.05, 0.0, 0.01, '#202326')
     # 正面の画面: 速度計（中央）、時計・表示灯（左右の小窓）
     fr_c, _, _ = facets[0]
     speedometer(b, fr_c, 0.0, 0.285, 0.54, 0.33)
@@ -408,23 +408,35 @@ def build(b):
     # ------------------------------------------------------------------
     # 天井・日よけ・後ろの壁まわり
     # ------------------------------------------------------------------
-    b.begin('運転室・天井と照明', L)
-    b.box(-6.42, -4.95, 3.10, 3.13, -0.72, 0.72, C_WALL, bottom='#e2e4e5')
-    b.box(-5.95, -5.25, 3.085, 3.10, -0.10, 0.10, 'mat:light')
-    # 前面窓の後ろ寄り（運転士の頭の上）を覆う内装の天井板
-    b.begin('運転室・前面窓の上の天井（内張り）', L)
-    xf, yf, wf = -7.30, 2.88, 0.86   # 前の縁
-    xr, yr, wr = -6.42, 3.10, 0.72   # 後ろの縁（平らな天井につなぐ）
-    b.face([(xf, yf, -wf), (xr, yr, -wr), (xr, yr, wr), (xf, yf, wf)], '#d9dcde')
-    b.face([(xf, yf + 0.03, wf), (xr, yr + 0.03, wr), (xr, yr + 0.03, -wr), (xf, yf + 0.03, -wf)], '#c9cccf')
-    for s in (1, -1):
-        p = [(xf, yf, wf * s), (xr, yr, wr * s), (xr, yr + 0.03, wr * s), (xf, yf + 0.03, wf * s)]
-        b.face(p if s > 0 else list(reversed(p)), '#c9cccf')
-    # 前の縁の見切り（黒）と、室内灯
-    b.box(xf - 0.03, xf + 0.02, yf - 0.03, yf + 0.03, -wf, wf, '#24272a')
+    # 天井: 前面窓（キャノピー）の上の縁から後ろは、屋根の内側に沿った内張り（外板から 5 cm 内側）
+    import shell
+    b.begin('運転室・天井（屋根の内張り）', L)
+    xa_, xb_ = shell.X_TIP + shell.WS_D1 + 0.03, -4.88
+    nx, nz = 24, 30
+    grid = []
+    for i in range(nx + 1):
+        x = xa_ + (xb_ - xa_) * i / nx
+        row = []
+        for j in range(nz + 1):
+            z = -1.25 + 2.5 * j / nz
+            row.append(shell.top_point(x, z, -0.05))
+        grid.append(row)
+    for i in range(nx):
+        for j in range(nz):
+            q = [grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]]
+            if min(p[1] for p in q) < 2.62:
+                continue
+            b.face(q, '#d9dcde', True)
+    # 室内灯（天井の中央）
+    for xc in (-5.95, -5.35):
+        cy = min(shell.top_point(xx, zz, -0.06)[1] for xx in (xc - 0.25, xc + 0.25) for zz in (-0.1, 0.1))
+        b.box(xc - 0.25, xc + 0.25, cy - 0.012, cy - 0.002, -0.10, 0.10, 'mat:light')
+    # 前面窓の上の縁の日よけ（巻取り箱・内側）
     b.begin('前面窓の日よけ（巻取り）', L)
-    b.box(xf + 0.02, xf + 0.10, yf - 0.06, yf - 0.005, -0.66, 0.66, '#2b2f33')
-    b.box(xf + 0.035, xf + 0.085, yf - 0.075, yf - 0.06, -0.10, 0.10, '#1b1d1f')  # 引き手
+    xv = shell.X_TIP + shell.WS_D1 + 0.06
+    yv = min(shell.top_point(xv, z, -0.05)[1] for z in (-0.62, 0.0, 0.62))
+    b.box(xv - 0.05, xv + 0.05, yv - 0.07, yv - 0.01, -0.62, 0.62, '#2b2f33')
+    b.box(xv - 0.10, xv - 0.04, yv - 0.085, yv - 0.07, -0.10, 0.10, '#1b1d1f')  # 引き手
     b.begin('運転室・乗務員扉の手すりと消火器', L)
     for s in (1, -1):
         for x in (-5.60, -4.98):
