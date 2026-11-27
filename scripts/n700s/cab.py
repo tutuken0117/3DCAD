@@ -25,6 +25,7 @@ C_GRIP = '#1c1d1f'
 C_SEAT = '#3a4656'
 C_SEAT_DARK = '#2c3541'
 C_TICK = '#e8ecef'
+LINING = '#3b4147'
 
 # 場面: 名古屋に着く直前（客室の案内表示「まもなく 名古屋です」に合わせる）
 SPEED = 165  # いまの速度 km/h
@@ -261,11 +262,11 @@ def build(b):
             p = fr.p(a, hgt, -0.07)
             edge.append((p[0], p[2]))
     edge.sort(key=lambda q: -q[1])
-    dash = edge + [(-8.40, -0.60), (-8.40, 0.60)]
-    b.prism(top_fr, ab(dash), DESK_TOP + 0.3, 2.40, C_DASH, side='#2f3337')
+    dash = edge + [(-8.55, -0.70), (-8.55, 0.70)]
+    b.prism(top_fr, ab(dash), DESK_TOP + 0.3, 2.43, C_DASH, side='#2f3337')
     # 窓の下の見切り（斜め）
-    sl = Frame((-8.40, 2.40, 0), (0, 0, -1), (-1, 0.75, 0))
-    b.obox(sl, -0.58, 0.58, 0.0, 0.05, 0.0, 0.01, '#202326')
+    sl = Frame((-8.55, 2.43, 0), (0, 0, -1), (-1, 0.75, 0))
+    b.obox(sl, -0.66, 0.66, 0.0, 0.10, 0.0, 0.01, '#202326')
     # 正面の画面: 速度計（中央）、時計・表示灯（左右の小窓）
     fr_c, _, _ = facets[0]
     speedometer(b, fr_c, 0.0, 0.285, 0.54, 0.33)
@@ -408,35 +409,79 @@ def build(b):
     # ------------------------------------------------------------------
     # 天井・日よけ・後ろの壁まわり
     # ------------------------------------------------------------------
-    # 天井: 前面窓（キャノピー）の上の縁から後ろは、屋根の内側に沿った内張り（外板から 5 cm 内側）
-    import shell
-    b.begin('運転室・天井（屋根の内張り）', L)
-    xa_, xb_ = shell.X_TIP + shell.WS_D1 + 0.03, -4.88
-    nx, nz = 24, 30
+    b.begin('運転室・天井と照明', L)
+    b.box(-6.42, -4.95, 3.10, 3.13, -0.72, 0.72, C_WALL, bottom='#e2e4e5')
+    b.box(-5.95, -5.25, 3.085, 3.10, -0.10, 0.10, 'mat:light')
+    # 前面窓の後ろ寄り（運転士の頭の上）: 平らな板ではなく、ガラスの曲面のすぐ内側に沿った内張り
+    b.begin('運転室・前面窓の上の天井（ガラスに沿った内張り）', L)
+    m = b.m
+    V = {v[0]: v for v in m['vertices']}
+    X_FROM = -7.25
+    # ガラスの三角形（上から見た xz で、その点の高さを測る）
+    tris = []
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        p = [V[i] for i in f['loop']]
+        for k in range(1, len(p) - 1):
+            tris.append((p[0], p[k], p[k + 1]))
+
+    def glass_y(x, z):
+        best = None
+        for a_, b_, c_ in tris:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + l3 * c_[2]
+            best = y if best is None else max(best, y)
+        return best
+
+    nx, nz = 14, 36
+    x_to = max(v[1] for v in m['vertices'] if v[4] == 900007) - 0.01
     grid = []
     for i in range(nx + 1):
-        x = xa_ + (xb_ - xa_) * i / nx
+        x = X_FROM + (x_to - X_FROM) * i / nx
         row = []
         for j in range(nz + 1):
-            z = -1.25 + 2.5 * j / nz
-            row.append(shell.top_point(x, z, -0.05))
+            z = -0.95 + 1.9 * j / nz
+            y = glass_y(x, z)
+            row.append(None if y is None else (x, y - 0.035, z))
+        # ガラスの面がない真ん中（四角い空き）は、左右の高さから補う
+        idx = [j for j, p_ in enumerate(row) if p_ is not None]
+        if len(idx) >= 2:
+            for j in range(idx[0], idx[-1] + 1):
+                if row[j] is None:
+                    jl = max(k for k in idx if k < j)
+                    jr = min(k for k in idx if k > j)
+                    t = (j - jl) / (jr - jl)
+                    yl, yr = row[jl][1], row[jr][1]
+                    z = -0.95 + 1.9 * j / nz
+                    # 真ん中は少し高く（屋根の丸み）
+                    row[j] = (x, yl + (yr - yl) * t + 0.04 * math.sin(math.pi * t), z)
         grid.append(row)
     for i in range(nx):
         for j in range(nz):
             q = [grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]]
-            if min(p[1] for p in q) < 2.62:
+            if any(p_ is None for p_ in q):
                 continue
-            b.face(q, '#d9dcde', True)
-    # 室内灯（天井の中央）
-    for xc in (-5.95, -5.35):
-        cy = min(shell.top_point(xx, zz, -0.06)[1] for xx in (xc - 0.25, xc + 0.25) for zz in (-0.1, 0.1))
-        b.box(xc - 0.25, xc + 0.25, cy - 0.012, cy - 0.002, -0.10, 0.10, 'mat:light')
-    # 前面窓の上の縁の日よけ（巻取り箱・内側）
+            b.face(q, LINING, True)
+    # 内張りの前の縁の見切りと、日よけの巻取り箱（縁のすぐ後ろ）
+    zs = [abs(v[3]) for v in m['vertices'] if v[4] == 900007 and abs(v[1] - X_FROM) < 0.03 and v[2] > 2.85]
+    wf = (max(zs) * 0.98) if zs else 0.8
+    ys = [v[2] for v in m['vertices'] if v[4] == 900007 and abs(v[1] - X_FROM) < 0.03]
+    yf = (min(max(ys), 3.2) - 0.04) if ys else 3.0
+    b.box(X_FROM - 0.015, X_FROM + 0.015, yf - 0.04, yf + 0.005, -wf * 0.9, wf * 0.9, '#24272a')
     b.begin('前面窓の日よけ（巻取り）', L)
-    xv = shell.X_TIP + shell.WS_D1 + 0.06
-    yv = min(shell.top_point(xv, z, -0.05)[1] for z in (-0.62, 0.0, 0.62))
-    b.box(xv - 0.05, xv + 0.05, yv - 0.07, yv - 0.01, -0.62, 0.62, '#2b2f33')
-    b.box(xv - 0.10, xv - 0.04, yv - 0.085, yv - 0.07, -0.10, 0.10, '#1b1d1f')  # 引き手
+    b.box(X_FROM + 0.02, X_FROM + 0.09, yf - 0.09, yf - 0.035, -0.62, 0.62, '#2b2f33')
+    b.box(X_FROM + 0.03, X_FROM + 0.08, yf - 0.105, yf - 0.09, -0.10, 0.10, '#1b1d1f')  # 引き手
     b.begin('運転室・乗務員扉の手すりと消火器', L)
     for s in (1, -1):
         for x in (-5.60, -4.98):

@@ -71,6 +71,10 @@ def main(src, dst, parts):
         shell.seams_and_marks(b)
         shell.deflector(b)
         bogie.build(b)
+    elif 'bogie' in parts:
+        # 外板は R23 までのもの（先頭形状は実車に近いと好評）のまま、台車だけ作り直す
+        b.remove_groups([900316, 900317])
+        bogie.build(b)
     if 'cab' in parts:
         b.remove_groups(OLD_CAB)
         cab.build(b)
@@ -86,12 +90,12 @@ def main(src, dst, parts):
         saloon.build(b)
     if 'track' in parts:
         track.build(b)
-    data['name'] = 'N700S 1号車 R24'
+    data['name'] = 'N700S 1号車 R25'
     save(data, dst)
     m = data['model']
     print('vertices', len(m['vertices']), 'edges', len(m['edges']), 'faces', len(m['faces']), 'groups', len(m['groups']))
 
 
 if __name__ == '__main__':
-    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'shell,cab,lav,saloon,track').split(','))
+    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'bogie,cab,lav,saloon,track').split(','))
     main(sys.argv[1], sys.argv[2], parts)
