@@ -692,6 +692,30 @@ def headlights_front(b):
             b.poly(fr, circle2(ax * u0, 0.0, 0.074, 28), 'mat:light', 0.008)
 
 
+GROOVE_X = Curve([(-12.2, 0.0), (-11.0, 0.45), (-9.8, 0.9), (-8.6, 1.0), (-6.6, 1.0), (-5.9, 0.55), (-5.45, 0.0), (99, 0.0)])
+GROOVE_DEPTH = 0.085
+GROOVE_Y, GROOVE_S = 2.05, 0.21
+
+
+def side_groove(b):
+    """青帯の通る側面の浅いくぼみ（前照灯の後ろから扉の前まで。上の盛り上がりと下のふくらみの間の溝）"""
+    groups = EXTERIOR
+    for v in b.m['vertices']:
+        if len(v) < 5 or v[4] not in groups or v[1] > -5.4:
+            continue
+        x, y, z = v[1], v[2], v[3]
+        if abs(z) < 0.45:
+            continue
+        g = GROOVE_X(x)
+        if g <= 0:
+            continue
+        w = math.exp(-((y - GROOVE_Y) / GROOVE_S) ** 2)
+        if w < 1e-3:
+            continue
+        v[3] = round(z - math.copysign(GROOVE_DEPTH * g * w, z), 6)
+    b.vkey = {}
+
+
 def build(b):
     # 外板は R23 を土台に（実車の写真と同じ角度で比べて合わせた）:
     # ・前面窓は真上から見て「∩」形（前は丸いまま、左右の窓の間に白い屋根が丸い先で入り込む）
@@ -700,6 +724,7 @@ def build(b):
     windshield_horseshoe(b)
     blunt_nose(b)
     nose_ridge(b)
+    side_groove(b)
     b.remove_groups(HEADLIGHTS + [900004, 900005])
     headlights_front(b)
     blue_band_front(b)
