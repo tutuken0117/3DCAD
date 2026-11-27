@@ -1063,6 +1063,12 @@ export class Model {
       box.expandByPoint(this.pos(e.a));
       box.expandByPoint(this.pos(e.b));
     }
+    // 面のレイヤーが表示中なら、辺が非表示レイヤーにあっても面の頂点を範囲に入れる
+    // （線だけ隠した部品を見落として、プレゼン表示の地面が部品の途中に来ないように）
+    for (const f of this.faces.values()) {
+      if (visibleOnly && !this.isLayerVisible(f.layer)) continue;
+      for (const v of f.loop) box.expandByPoint(this.pos(v));
+    }
     return box;
   }
 
