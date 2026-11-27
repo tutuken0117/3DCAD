@@ -158,14 +158,15 @@ def blue_band_front(b):
     ss = lambda t: t * t * (3 - 2 * t)
     xb = -5.05                     # 直線の帯の前の端
     # 太い帯: 上の縁はゆるく、下の縁は急に上がって、前面窓の前の端の下でとがる
-    xt, yt = -8.90, 2.40
+    xt, yt = -8.90, 2.008
     top0, bot0 = 1.964, 1.793
 
     L = math.hypot(xb - xt, 1.878 - yt)
 
     def center(x):
-        t = min(1, max(0, (xb - x) / (xb - xt)))
-        return 1.878 + (yt - 1.878) * t ** 1.15
+        # 扉の前で一度少し上がり、そこから先は水平（写真のとおり）
+        t = min(1, max(0, (-5.30 - x) / 1.10))
+        return 1.878 + 0.13 * t * t * (3 - 2 * t)
 
     def thick(x):
         dist = max(0.0, x - xt)
