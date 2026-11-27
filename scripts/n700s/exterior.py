@@ -299,11 +299,11 @@ def windshield_shorten(b):
 
     b.begin('前面窓の後ろの縁（黒い縁取り）', 'Glazing')
     n = 44
-    w = 0.05
+    w = 0.028
     for off, flip in ((0.006, False), (-0.006, True)):
         prev = None
         for k in range(n + 1):
-            z = -0.86 + 1.72 * k / n
+            z = -0.74 + 1.48 * k / n
             x0 = ws_cut(z) - w / 2
             x1 = ws_cut(z) + w / 2
             y0, y1 = gy(x0, z), gy(x1, z)
@@ -314,10 +314,37 @@ def windshield_shorten(b):
             prev = cur
 
 
+RIDGE_ON = Curve([(0.0, 0.0), (0.35, 0.0), (1.2, 1.0), (4.3, 1.0), (5.0, 0.0), (99, 0.0)])
+
+
+def nose_ridge(b):
+    """鼻先の上面に、運転席の窓の下の中央から先端へ通る稜線と、その左右の浅いくぼみを付ける（上下に数 cm 動かすだけ）"""
+    groups = EXTERIOR | {900004, 900005}
+    for v in b.m['vertices']:
+        if len(v) < 5 or v[4] not in groups or v[1] > -8.6:
+            continue
+        x, y, z = v[1], v[2], v[3]
+        g = RIDGE_ON(x - X_TIP)
+        if g <= 0:
+            continue
+        t, bt = TOP(x), BOT(x)
+        h = (y - bt) / max(0.05, t - bt)
+        wh = min(1.0, max(0.0, (h - 0.55) / 0.25))
+        wh = wh * wh * (3 - 2 * wh)
+        if wh <= 0:
+            continue
+        az = abs(z)
+        dy = 0.070 * math.exp(-(az / 0.10) ** 2) - 0.085 * math.exp(-((az - 0.40) / 0.20) ** 2) + 0.03 * math.exp(-((az - 0.85) / 0.18) ** 2)
+        v[2] = round(y + g * wh * dy, 6)
+    b.vkey = {}
+
+
 def build(b):
-    # 外板・先頭形状・前面窓・前照灯・青帯はすべて R23 のまま（実車にいちばん近い）。
-    # R26（くちばしを広げる）・R27（前面窓の柱を外し短くする）の手直しは使わない
-    return
+    # 外板・先頭形状・前面窓の形・前照灯・青帯は R23 のまま（実車にいちばん近い）。
+    # ・前面窓の後ろ寄り（運転士の頭上）は白い屋根にして、境目に黒い縁取り（柱などはそのまま）
+    # ・鼻先の上面に中央の稜線と左右の浅いくぼみ
+    windshield_shorten(b)
+    nose_ridge(b)
 
 
 def build_r26(b):
