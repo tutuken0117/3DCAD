@@ -158,16 +158,24 @@ def blue_band_front(b):
     ss = lambda t: t * t * (3 - 2 * t)
     xb = -5.05                     # 直線の帯の前の端
     # 太い帯: 上の縁はゆるく、下の縁は急に上がって、前面窓の前の端の下でとがる
-    xt, yt = -8.50, 2.22
+    xt, yt = -8.90, 2.40
     top0, bot0 = 1.964, 1.793
 
-    def top1(x):
+    L = math.hypot(xb - xt, 1.878 - yt)
+
+    def center(x):
         t = min(1, max(0, (xb - x) / (xb - xt)))
-        return top0 + (yt - top0) * t ** 1.6
+        return 1.878 + (yt - 1.878) * t ** 1.15
+
+    def thick(x):
+        dist = max(0.0, x - xt)
+        return 0.171 * min(1.0, dist / 1.6) ** 0.75
+
+    def top1(x):
+        return center(x) + thick(x) / 2
 
     def bot1(x):
-        t = min(1, max(0, (xb - x) / (xb - xt)))
-        return bot0 + (yt - bot0) * t ** 1.8 + 0.0 * t
+        return center(x) - thick(x) / 2
 
     b.begin('青帯の先頭部（太い帯・跳ね上がり）', 'N700S blue')
     band(b, surf, xb + 0.002, xt, bot1, top1, '#0054a6', 120)
@@ -489,14 +497,211 @@ def windshield_shape(b):
                 prev = cur
 
 
+def tongue_edge(z):
+    """窓の左右の脚の間に入り込む白い屋根の先（x）。前へ丸くふくらむ"""
+    return -7.38 + 1.7 * z * z
+
+
+TONGUE_W = 0.50
+
+
+def windshield_horseshoe(b):
+    """前面窓を真上から見て「∩」の形に: 窓の前は R23 の丸いまま、左右の窓が後ろへ伸び、その間に白い屋根が丸い先で入り込む"""
+    m = b.m
+    V = {v[0]: v for v in m['vertices']}
+    tris = []
+    gl = []
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        p = [V[i] for i in f['loop']]
+        for k in range(1, len(p) - 1):
+            gl.append((p[0], p[k], p[k + 1]))
+
+    def gy0(x, z):
+        best = None
+        for a_, b_, c_ in gl:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            if min(l1, l2, 1 - l1 - l2) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + (1 - l1 - l2) * c_[2]
+            best = y if best is None else max(best, y)
+        return best
+
+    y0 = gy0(-7.38, 0.0)
+    edge = {}
+    for k in range(51):
+        z = -TONGUE_W + 2 * TONGUE_W * k / 50
+        x = -7.6
+        while x < -6.6:
+            y = gy0(x, z)
+            if y is not None and y >= y0:
+                break
+            x += 0.005
+        edge[round(z, 4)] = x
+    zs = sorted(edge)
+
+    def tongue_edge_c(z):
+        z = max(-TONGUE_W, min(TONGUE_W, z))
+        for i in range(len(zs) - 1):
+            if zs[i] <= z <= zs[i + 1]:
+                t = (z - zs[i]) / (zs[i + 1] - zs[i])
+                return edge[zs[i]] * (1 - t) + edge[zs[i + 1]] * t
+        return edge[zs[-1]]
+
+    global tongue_edge
+    tongue_edge = tongue_edge_c
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        p = [V[i] for i in f['loop']]
+        cx = sum(q[1] for q in p) / len(p)
+        cz = sum(q[3] for q in p) / len(p)
+        if abs(cz) < TONGUE_W and cx > tongue_edge(cz):
+            f['color'] = '#f5f7f7'
+        elif f['color'] == '#20353c':
+            f['color'] = 'mat:glass-clear'   # 正面の窓の真ん中の柱は実車にない
+        elif f['color'] == '#18262d' and abs(cz) < 0.42 and cx > -7.6:
+            f['color'] = 'mat:glass-clear'   # 後ろ寄りの横の桟
+        for k in range(1, len(p) - 1):
+            tris.append((p[0], p[k], p[k + 1]))
+
+    def tri_y(tl, x, z, ymin=-9):
+        best = None
+        for a_, b_, c_ in tl:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + l3 * c_[2]
+            if y > ymin:
+                best = y if best is None else max(best, y)
+        return best
+
+    shell_tris = []
+    for f in m['faces']:
+        p = [V[i] for i in f['loop']]
+        if p[0][4] != 900001 or max(q[1] for q in p) < -7.6 or min(q[1] for q in p) > -5.5:
+            continue
+        for k in range(1, len(p) - 1):
+            shell_tris.append((p[0], p[k], p[k + 1]))
+
+    # 白い屋根の舌（外板の穴もここでふさぐ）
+    b.begin('前面窓の間の白い屋根（丸い先）', 'N700S body')
+    nz, nx = 30, 14
+    cols = []
+    for j in range(nz + 1):
+        z = -TONGUE_W + 2 * TONGUE_W * j / nz
+        xf = tongue_edge(z)
+        yf = tri_y(tris, xf, z)
+        xs = xf
+        while yf is None and xs > xf - 0.3:
+            xs -= 0.01
+            yf = tri_y(tris, xs, z)
+        xb = yb = None
+        for xt in (-6.30, -6.20, -6.10, -6.00, -5.9, -5.8, -5.7):
+            yb = tri_y(shell_tris, xt, z, 2.9)
+            if yb is not None:
+                xb = xt
+                break
+        if yf is None or xb is None:
+            cols.append(None)
+            continue
+        col = []
+        for t in range(nx + 1):
+            x = xf + (xb - xf) * t / nx
+            y = yf + (yb - yf) * t / nx
+            ys = tri_y(shell_tris, x, z, 2.9)
+            yg = tri_y(tris, x, z)
+            y = max([y] + [q for q in (ys, yg) if q is not None])
+            col.append((x, y + 0.004, z))
+        cols.append(col)
+    for j in range(nz):
+        a_, c_ = cols[j], cols[j + 1]
+        if a_ is None or c_ is None:
+            continue
+        for t in range(nx):
+            b.face([a_[t], c_[t], c_[t + 1], a_[t + 1]], '#f5f7f7', True)
+    # 白い屋根の縁（黒い縁取り）: 丸い先と左右の脚との境
+    b.begin('前面窓の間の白い屋根の縁取り', 'Glazing')
+    pts = []
+    for k in range(41):
+        z = -TONGUE_W + 2 * TONGUE_W * k / 40
+        pts.append((tongue_edge(z), z))
+    line = []
+    for (x, z) in pts:
+        y = tri_y(tris, x, z)
+        if y is None:
+            y = tri_y(shell_tris, x, z, 2.9)
+        line.append(None if y is None else (x, y + 0.008, z))
+    for k in range(len(line) - 1):
+        a_, c_ = line[k], line[k + 1]
+        if a_ is None or c_ is None:
+            continue
+        b.tube([a_, c_], 0.012, '#18262d', 6, cap=False)
+
+
+HL_X, HL_Y = -11.00, 1.67    # 前照灯の中心（正面から見て下から約半分の高さ・前を向いた斜めの面）
+
+
+def headlights_front(b):
+    """前照灯: 肩の面に沿った、後ろへ流れる涙形のレンズ。前の端に LED が 2 つ（前を向いて光る）"""
+    from lib import Frame, ellipse2, circle2
+    surf = SideSurface(b.m)
+    b.begin('前照灯（左右・LED 2 灯）', 'N700S body')
+    for s in (1, -1):
+        c = surf.point(HL_X, HL_Y, 0.010, s)
+        c1 = surf.point(HL_X + 0.02, HL_Y, 0.010, s)
+        c2 = surf.point(HL_X, HL_Y + 0.02, 0.010, s)
+        if c is None or c1 is None or c2 is None:
+            continue
+        tx = (c1[0] - c[0], c1[1] - c[1], c1[2] - c[2])
+        ty = (c2[0] - c[0], c2[1] - c[1], c2[2] - c[2])
+        fr = Frame(c, tx, ty)
+        out = (0.0, 0.0, s)
+        if fr.n[2] * s < 0:
+            fr = Frame(c, (-tx[0], -tx[1], -tx[2]), ty)
+        # 涙形（前が丸く、後ろへ細く流れる）。長さ 0.56 m・高さ 0.20 m
+        u0 = 1 if fr.u[0] > 0 else -1
+        shape = []
+        for k in range(48):
+            t = 2 * math.pi * k / 48
+            a = 0.36 * math.cos(t)
+            front = (1 - a * u0 / 0.36) / 2   # 前の端で 1、後ろの端で 0
+            r = 0.05 + 0.085 * front ** 0.6
+            shape.append((a, r * math.sin(t)))
+        b.poly(fr, shape, '#c3c9cd', 0.0)
+        b.poly(fr, [(a * 0.94, bb * 0.84) for (a, bb) in shape], '#5f6c75', 0.004)
+        for ax in (-0.22, -0.06):
+            b.poly(fr, circle2(ax * u0, 0.0, 0.088, 28), '#d5dbde', 0.006)
+            b.poly(fr, circle2(ax * u0, 0.0, 0.074, 28), 'mat:light', 0.008)
+
+
 def build(b):
-    # 外板は R23 を土台に:
-    # ・上から見た鼻先のとがりを丸く（横幅だけ広げる）
-    # ・前面窓は前へとがる形、後ろの真ん中の四角は白い屋根（左右のそり込みは残す）
-    # ・鼻先の上面に中央の稜線と左右のくぼみ
-    windshield_shape(b)
+    # 外板は R23 を土台に（実車の写真と同じ角度で比べて合わせた）:
+    # ・前面窓は真上から見て「∩」形（前は丸いまま、左右の窓の間に白い屋根が丸い先で入り込む）
+    # ・上から見た鼻先のとがりを丸く、鼻先の上面に中央の稜線
+    # ・前照灯は正面から見える高さ・向きへ、青帯の先は正面から見て車体の高さの約 55% へ
+    windshield_horseshoe(b)
     blunt_nose(b)
     nose_ridge(b)
+    b.remove_groups(HEADLIGHTS + [900004, 900005])
+    headlights_front(b)
+    blue_band_front(b)
 
 
 def build_r26(b):
