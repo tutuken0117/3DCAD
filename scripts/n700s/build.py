@@ -11,6 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lib import Builder, load, save  # noqa: E402
 import cab  # noqa: E402
+import saloon  # noqa: E402
 
 # 作り直すために消す、もとのモデルのグループ
 OLD_CAB = [
@@ -34,12 +35,15 @@ def main(src, dst, parts):
             lav.build(b)
     except ImportError:
         pass
-    data['name'] = 'N700S 1号車 R19'
+    if 'saloon' in parts:
+        b.remove_groups(saloon.OLD)
+        saloon.build(b)
+    data['name'] = 'N700S 1号車 R20'
     save(data, dst)
     m = data['model']
     print('vertices', len(m['vertices']), 'edges', len(m['edges']), 'faces', len(m['faces']), 'groups', len(m['groups']))
 
 
 if __name__ == '__main__':
-    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'cab,lav').split(','))
+    parts = set((sys.argv[3] if len(sys.argv) > 3 else 'cab,lav,saloon').split(','))
     main(sys.argv[1], sys.argv[2], parts)
