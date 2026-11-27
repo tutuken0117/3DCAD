@@ -45,6 +45,8 @@ export interface MaterialDef {
   custom?: boolean;
   /** 光る強さ（照明器具の発光面） */
   emissive?: number;
+  /** 光るが、プレゼン表示の室内の明かり（点光源）は置かない（液晶画面・表示灯など） */
+  noLamp?: boolean;
 }
 
 type Def = Omit<MaterialDef, 'id' | 'name' | 'category'>;
@@ -145,6 +147,15 @@ export const MATERIALS: MaterialDef[] = [
   m('paint-red', '塗装（赤）', '家具', { color: '#c0392b', roughness: 0.4, metalness: 0.2, pattern: 'plain', tile: 1 }),
   m('paint-green', '塗装（緑）', '家具', { color: '#2f6b4f', roughness: 0.45, metalness: 0.2, pattern: 'plain', tile: 1 }),
   m('light-green', '誘導灯（緑の発光）', '家具', { color: '#3ccf6e', roughness: 0.5, metalness: 0, pattern: 'plain', tile: 1, emissive: 1.2 }),
+  // 液晶画面・表示灯（光るが室内の明かりにはしない）
+  m('lcd-bg', '液晶画面（点灯・紺地）', '家具', { color: '#0b1a33', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.55, noLamp: true }),
+  m('lcd-white', '液晶表示（白）', '家具', { color: '#eef4ff', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.95, noLamp: true }),
+  m('lcd-green', '液晶表示・表示灯（緑）', '家具', { color: '#3be07c', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.95, noLamp: true }),
+  m('lcd-yellow', '液晶表示・表示灯（黄）', '家具', { color: '#ffcf3a', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.95, noLamp: true }),
+  m('lcd-orange', '液晶表示・表示灯（橙）', '家具', { color: '#ff8a2a', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.95, noLamp: true }),
+  m('lcd-red', '液晶表示・表示灯（赤）', '家具', { color: '#ff4436', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.95, noLamp: true }),
+  m('lcd-blue', '液晶表示（青）', '家具', { color: '#2f86ff', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.9, noLamp: true }),
+  m('lcd-gray', '液晶表示（灰）', '家具', { color: '#7f8da3', roughness: 0.75, metalness: 0, pattern: 'plain', tile: 1, emissive: 0.6, noLamp: true }),
   // その他
   m('white', '白（模型）', 'その他', dull('#f2f1ee', 'plain', 1, 0.9)),
   m('steel-gray', '鉄骨（グレー塗装）', 'その他', metal('#7d8287', 'plain', 1)),

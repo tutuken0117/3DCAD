@@ -341,7 +341,7 @@ export class Presentation {
     for (const f of model.faces.values()) {
       if (!model.isLayerVisible(f.layer)) continue;
       const def = materialOf(f.color);
-      if (!def?.emissive) continue;
+      if (!def?.emissive || def.noLamp) continue;
       const pts = model.facePoints(f);
       const area = model.faceArea(f);
       if (area <= 0) continue;
