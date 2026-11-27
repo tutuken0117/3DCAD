@@ -158,6 +158,7 @@ export class App {
     this.tool = next;
     next.activate();
     this.ui.setActiveTool(id);
+    this.ui.refreshViewBar();
     this.viewport.renderer.domElement.style.cursor = id === 'select' ? 'default' : id === 'orbit' || id === 'pan' ? 'grab' : 'crosshair';
   }
 

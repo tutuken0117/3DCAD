@@ -48,7 +48,7 @@ export class WalkTool extends Tool {
   private prevFov = 45;
 
   hint(): string {
-    return `床をクリック（タップ）でそこに立つ・ドラッグで見回す・ホイール／↑↓で前後に歩く・←→で向きを変える（目の高さ ${formatLength(this.eye)}、数字で変更）`;
+    return `床や地面をクリック（タップ）でそこに立つ・ドラッグで見回す・ホイール／↑↓で前後に歩く・←→で向きを変える（目の高さ ${formatLength(this.eye)}、数字で変更）`;
   }
 
   activate(): void {
@@ -109,11 +109,32 @@ export class WalkTool extends Tool {
     vp.requestRender();
   }
 
-  /** 点 p から下を見て、最初にある床（上向きの面）の高さ。p より up だけ上から探す */
+  /** 地面の高さ（プレゼン表示の芝生など。ないときはモデルのいちばん下） */
+  private groundY(): number | null {
+    const g = this.app.presentation.groundHeight();
+    if (g !== null) return g;
+    const box = this.app.model.boundingBox();
+    return box.isEmpty() ? null : box.min.y;
+  }
+
+  /** 点 p から下を見て、最初にある床（上向きの面）の高さ。p より up だけ上から探す。面がなければ地面 */
   private floorUnder(p: Vector3, up = 0.3): number | undefined {
     const rc = new Raycaster(p.clone().setY(p.y + up), new Vector3(0, -1, 0), 0, up + 50);
     const hit = this.app.renderer.pickFace(rc);
-    return hit && hit.normal.y > 0.5 ? hit.point.y : undefined;
+    if (hit && hit.normal.y > 0.5) return hit.point.y;
+    const g = this.groundY();
+    return g !== null && g <= p.y + up ? g : undefined;
+  }
+
+  /** 画面の点から地面（水平面）に当たる位置 */
+  private groundHit(e: PointerEvent): Vector3 | null {
+    const g = this.groundY();
+    if (g === null) return null;
+    const ray = this.app.viewport.raycaster(e.clientX, e.clientY).ray;
+    if (Math.abs(ray.direction.y) < 1e-6) return null;
+    const t = (g - ray.origin.y) / ray.direction.y;
+    if (t <= 0 || t > 2000) return null;
+    return ray.origin.clone().addScaledVector(ray.direction, t);
   }
 
   /** 水平方向 d に dist 進む（壁の手前 0.3m で止まる） */
@@ -174,9 +195,10 @@ export class WalkTool extends Tool {
     if (!d || d.moved) return;
     // クリック: そこに立つ
     const hit = this.app.renderer.pickFace(this.app.viewport.raycaster(e.clientX, e.clientY));
-    if (!hit) return this.app.ui.toast('床（面）をクリックしてください');
-    let p = hit.point.clone();
-    if (hit.normal.y < 0.5) {
+    const ground = hit ? null : this.groundHit(e);
+    if (!hit && !ground) return this.app.ui.toast('床（面）か地面をクリックしてください');
+    let p = hit ? hit.point.clone() : ground!;
+    if (hit && hit.normal.y < 0.5) {
       // 壁をクリックしたら、その手前の床に立つ
       const back = this.app.viewport.camera.position.clone().sub(hit.point).setY(0).normalize();
       p.addScaledVector(back, 0.6);

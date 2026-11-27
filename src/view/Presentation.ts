@@ -322,6 +322,11 @@ export class Presentation {
     vp.requestRender();
   }
 
+  /** プレゼン表示の地面（芝生など）の高さ。地面を出していないときは null */
+  groundHeight(): number | null {
+    return this.active && this.ground.visible ? this.ground.position.y : null;
+  }
+
   private lamps = new Group();
 
   /**

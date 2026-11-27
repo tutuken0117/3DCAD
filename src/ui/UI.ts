@@ -619,39 +619,54 @@ export class UI {
     this.root.classList.toggle('model-only', on);
     this.root.classList.remove('panel-open');
     if (on) {
-      if (!this.fullviewBar) {
-        const bar = h('div', { class: 'fullview-bar' });
-        bar.innerHTML = `
-          <button data-fv="zoom" title="全体を表示">${ICONS.fit}</button>
-          <button data-fv="walk" title="立ち位置（床をタップしてそこに立つ）">${ICONS.walk}</button>
-          <button data-fv="exit" class="fv-exit" title="全画面を終わる">✕ 戻る</button>`;
-        bar.addEventListener('click', (e) => {
-          const b = (e.target as HTMLElement).closest('button');
-          if (!b) return;
-          if (b.dataset.fv === 'zoom') app.zoomExtents();
-          if (b.dataset.fv === 'walk') {
-            if (app.tool.def.id === 'walk') app.setTool('select');
-            else app.setTool('walk');
-            b.classList.toggle('on', app.tool.def.id === 'walk');
-            if (app.tool.def.id !== 'walk') app.viewport.setNavigationMode(app.presentation.active ? 'orbit' : 'default');
-          }
-          if (b.dataset.fv === 'exit') this.setModelOnly(false);
-        });
-        this.viewportEl.appendChild(bar);
-        this.fullviewBar = bar;
-      }
-      this.fullviewBar.hidden = false;
+      this.refreshViewBar();
       // 指 1 本で回せるように（立ち位置のときはそのまま）
       if (app.tool.def.id !== 'walk') app.viewport.setNavigationMode('orbit');
       document.documentElement.requestFullscreen?.().catch(() => {});
       this.toast('モデルだけを表示しています。右上の「✕ 戻る」で元に戻ります', 4000);
     } else {
-      if (this.fullviewBar) this.fullviewBar.hidden = true;
-      if (app.tool.def.id === 'walk') app.setTool('select');
-      app.viewport.setNavigationMode(app.presentation.active ? 'orbit' : 'default');
+      if (app.tool.def.id === 'walk' && !app.presentation.active) app.setTool('select');
+      app.viewport.setNavigationMode(app.presentation.active && app.tool.def.id !== 'walk' ? 'orbit' : 'default');
       if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+      if (app.presentation.active) this.root.classList.add('panel-open');
+      this.refreshViewBar();
     }
     app.viewport.refreshSize();
+  }
+
+  /**
+   * 右上の小さなボタン（全体表示・立ち位置・戻る）。モデルだけ表示のときと、プレゼン表示のときに出す。
+   * 「✕ 戻る」はモデルだけ表示のときだけ。
+   */
+  refreshViewBar(): void {
+    const app = this.app;
+    const modelOnly = this.root.classList.contains('model-only');
+    const show = modelOnly || !!app.presentation?.active;
+    if (!this.fullviewBar) {
+      if (!show) return;
+      const bar = h('div', { class: 'fullview-bar' });
+      bar.innerHTML = `
+        <button data-fv="zoom" title="全体を表示">${ICONS.fit}</button>
+        <button data-fv="walk" title="立ち位置（床や地面をタップしてそこに立つ）">${ICONS.walk}</button>
+        <button data-fv="exit" class="fv-exit" title="全画面を終わる">✕ 戻る</button>`;
+      bar.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest('button');
+        if (!b) return;
+        if (b.dataset.fv === 'zoom') app.zoomExtents();
+        if (b.dataset.fv === 'walk') {
+          if (app.tool.def.id === 'walk') app.setTool('select');
+          else app.setTool('walk');
+          if (app.tool.def.id !== 'walk') app.viewport.setNavigationMode(app.presentation.active ? 'orbit' : 'default');
+          this.refreshViewBar();
+        }
+        if (b.dataset.fv === 'exit') this.setModelOnly(false);
+      });
+      this.viewportEl.appendChild(bar);
+      this.fullviewBar = bar;
+    }
+    this.fullviewBar.hidden = !show;
+    this.fullviewBar.querySelector<HTMLButtonElement>('[data-fv=exit]')!.hidden = !modelOnly;
+    this.fullviewBar.querySelector('[data-fv=walk]')!.classList.toggle('on', app.tool.def.id === 'walk');
   }
 
   /** 保存のしかたの選択状態（メニューの ✓） */
@@ -1328,6 +1343,7 @@ export class UI {
   /** プレゼン表示に入った／出た */
   setPresenting(on: boolean): void {
     this.root.classList.toggle('presenting', on);
+    this.refreshViewBar();
     const b = this.root.querySelector<HTMLButtonElement>('[data-act=present] span');
     if (b) b.textContent = on ? '編集に戻る' : 'プレゼン資料を作る';
     if (on) {

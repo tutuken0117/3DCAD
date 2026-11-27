@@ -1161,6 +1161,9 @@ select {
 .fullview-bar[hidden] {
   display: none;
 }
+.fullview-bar button[hidden] {
+  display: none;
+}
 .fullview-bar button {
   display: inline-flex;
   align-items: center;
