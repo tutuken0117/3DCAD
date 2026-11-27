@@ -451,7 +451,7 @@ def build(b):
         x = X_FROM + (x_to - X_FROM) * i / nx
         row = []
         for j in range(nz + 1):
-            z = -0.95 + 1.9 * j / nz
+            z = -0.46 + 0.92 * j / nz
             y = glass_y(x, z)
             row.append(None if y is None else (x, y - 0.035, z))
         # ガラスの面がない真ん中（四角い空き）は、左右の高さから補う
@@ -463,7 +463,7 @@ def build(b):
                     jr = min(k for k in idx if k > j)
                     t = (j - jl) / (jr - jl)
                     yl, yr = row[jl][1], row[jr][1]
-                    z = -0.95 + 1.9 * j / nz
+                    z = -0.46 + 0.92 * j / nz
                     # 真ん中は少し高く（屋根の丸み）
                     row[j] = (x, yl + (yr - yl) * t + 0.04 * math.sin(math.pi * t), z)
         grid.append(row)

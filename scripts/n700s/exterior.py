@@ -352,12 +352,84 @@ def nose_ridge(b):
     b.vkey = {}
 
 
+BLUNT = Curve([(0.0, 0.45), (0.5, 0.38), (1.0, 0.30), (1.5, 0.23), (2.5, 0.14), (3.5, 0.08), (4.5, 0.04), (5.5, 0.015), (6.5, 0.0), (99, 0.0)])
+
+
+def blunt_nose(b):
+    """上から見た鼻先のとがりを丸くする（断面の形はそのまま、横幅だけを先端ほど広げる）"""
+    groups = EXTERIOR | {900004, 900005}
+    for v in b.m['vertices']:
+        if len(v) > 4 and v[4] in groups and v[1] < X_LIMIT:
+            v[3] = round(v[3] * (1 + BLUNT(v[1] - X_TIP)), 6)
+    b.vkey = {}
+
+
+def ws_front_v(z):
+    """前面窓の前の縁（x）: 前へとがる形"""
+    t = min(1.0, abs(z) / 0.88)
+    return -8.66 + 1.20 * t ** 1.3
+
+
+def windshield_shape(b):
+    """前面窓: 前へとがる形にし（前は白いボディ）、後ろの真ん中の四角（灰色に見えていた所）を白い屋根に。左右のそり込みは残す"""
+    m = b.m
+    V = {v[0]: v for v in m['vertices']}
+    tris = []
+    for f in m['faces']:
+        if V[f['loop'][0]][4] != 900007:
+            continue
+        p = [V[i] for i in f['loop']]
+        cx = sum(q[1] for q in p) / len(p)
+        cz = sum(q[3] for q in p) / len(p)
+        if cx < ws_front_v(cz):
+            f['color'] = '#f5f7f7'
+        elif f['color'] == 'mat:glass-clear' and cx > -7.22 and abs(cz) < 0.46:
+            f['color'] = '#f5f7f7'
+        for k in range(1, len(p) - 1):
+            tris.append((p[0], p[k], p[k + 1]))
+
+    def gy(x, z):
+        best = None
+        for a_, b_, c_ in tris:
+            x1, z1, x2, z2, x3, z3 = a_[1], a_[3], b_[1], b_[3], c_[1], c_[3]
+            if x < min(x1, x2, x3) or x > max(x1, x2, x3) or z < min(z1, z2, z3) or z > max(z1, z2, z3):
+                continue
+            det = (z2 - z3) * (x1 - x3) + (x3 - x2) * (z1 - z3)
+            if abs(det) < 1e-12:
+                continue
+            l1 = ((z2 - z3) * (x - x3) + (x3 - x2) * (z - z3)) / det
+            l2 = ((z3 - z1) * (x - x3) + (x1 - x3) * (z - z3)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) < -1e-6:
+                continue
+            y = l1 * a_[2] + l2 * b_[2] + l3 * c_[2]
+            best = y if best is None else max(best, y)
+        return best
+
+    b.begin('前面窓の前の縁（とがった形・黒い縁取り）', 'Glazing')
+    n = 60
+    w = 0.03
+    for off, flip in ((0.006, False), (-0.006, True)):
+        prev = None
+        for k in range(n + 1):
+            z = -0.87 + 1.74 * k / n
+            x0 = ws_front_v(z) - w / 2
+            x1 = ws_front_v(z) + w / 2
+            y0, y1 = gy(x0, z), gy(x1, z)
+            cur = None if (y0 is None or y1 is None) else ((x0, y0 + off, z), (x1, y1 + off, z))
+            if prev and cur:
+                q = [prev[0], cur[0], cur[1], prev[1]]
+                b.face(list(reversed(q)) if flip else q, '#18262d', True)
+            prev = cur
+
+
 def build(b):
-    # 外板・先頭形状・前面窓の形・前照灯・青帯は R23 のまま（実車にいちばん近い）。
-    # ・前面窓の後ろ寄り（運転士の頭上）は白い屋根にして、境目に黒い縁取り（柱などはそのまま）
-    # ・前の端は鼻先の斜面まで伸ばさず、ほぼまっすぐな縁で切る（窓の前は白いボンネット）
-    # ・鼻先の上面に、窓の下の中央から先端へ通る稜線と、その左右のくぼみ
-    windshield_shorten(b)
+    # 外板は R23 を土台に:
+    # ・上から見た鼻先のとがりを丸く（横幅だけ広げる）
+    # ・前面窓は前へとがる形、後ろの真ん中の四角は白い屋根（左右のそり込みは残す）
+    # ・鼻先の上面に中央の稜線と左右のくぼみ
+    windshield_shape(b)
+    blunt_nose(b)
     nose_ridge(b)
 
 
