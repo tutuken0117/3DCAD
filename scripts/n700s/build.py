@@ -38,7 +38,7 @@ def main(src, dst, parts):
     if 'saloon' in parts:
         b.remove_groups(saloon.OLD)
         saloon.build(b)
-    data['name'] = 'N700S 1号車 R20'
+    data['name'] = 'N700S 1号車 R21'
     save(data, dst)
     m = data['model']
     print('vertices', len(m['vertices']), 'edges', len(m['edges']), 'faces', len(m['faces']), 'groups', len(m['groups']))

@@ -3,6 +3,7 @@
 - 窓の日よけ（ロールカーテン）: すべての窓の上に巻取り箱を付け、いくつかは途中まで下ろす
 - 床: 座席の下の床と通路のカーペットを落ち着いた青みの灰色に
 - 後ろの妻面: 黒い四角だった貫通路を、ひだのある幌（ほろ）と幌枠に
+- 窓下の小さなテーブル: N700S で大きくなり、ペットボトルを置いたまま日よけを下まで下ろせる
 """
 import math
 from lib import Frame, rrect2
@@ -15,7 +16,7 @@ OLD = [900104]  # Rear gangway diaphragm（黒い四角）
 # 窓内枠のグループ（1〜13 番）
 FRAMES = [900114 + 7 * k for k in range(13)]
 # 下ろしておく窓（番号: 下ろした割合）。山側（+z）・海側（-z）
-LOWERED = {(2, 1): 0.45, (5, 1): 1.0, (6, 1): 0.3, (9, -1): 0.6, (10, -1): 1.0, (12, 1): 0.5, (3, -1): 0.25}
+LOWERED = {(2, 1): 0.45, (5, 1): 1.0, (6, 1): 0.3, (9, -1): 0.6, (10, -1): 1.0, (12, 1): 0.5, (3, -1): 0.25, (7, -1): 1.0}
 
 C_BLIND = '#d9d3c4'      # 日よけ（明るいベージュ）
 C_BLIND_EDGE = '#a9a294'
@@ -65,6 +66,45 @@ def blinds(b):
                 b.box((xa + xb) / 2 - 0.04, (xa + xb) / 2 + 0.04, yb - 0.03, yb - 0.018, min(zz, zz - 0.012 * s), max(zz, zz - 0.012 * s), C_BLIND_EDGE)
 
 
+def bottle(b, x, y, z, label):
+    """ペットボトル（500 mL・高さ約 21 cm）"""
+    fr = Frame((x, y, z), (1, 0, 0), (0, 0, -1))  # n = +y
+    b.lathe(fr, [(0.0, 0.0), (0.030, 0.0), (0.033, 0.006), (0.033, 0.13), (0.031, 0.15), (0.016, 0.185), (0.013, 0.19), (0.0, 0.19)], 'mat:glass-clear', 16)
+    b.cyl(fr, 0.0335, 0.06, 0.12, label, 16, cap=False)
+    b.cyl(fr, 0.014, 0.19, 0.212, '#2f8a4a' if label != '#e8e2d0' else '#2b4f9a', 12)
+    b.lathe(fr, [(0.0, 0.004), (0.031, 0.004), (0.032, 0.06), (0.0, 0.06)], '#9cc49a' if label != '#e8e2d0' else '#e4ecf2', 16)
+
+
+def window_tables(b):
+    """窓下のテーブル（左右すべての窓）"""
+    m = b.m
+    box = {}
+    for v in m['vertices']:
+        if v[4] in FRAMES:
+            bb = box.setdefault(v[4], [9, -9, 9, -9, 9])
+            bb[0] = min(bb[0], v[1]); bb[1] = max(bb[1], v[1])
+            bb[2] = min(bb[2], v[2]); bb[3] = max(bb[3], v[2])
+            if v[3] > 0:
+                bb[4] = min(bb[4], v[3])
+    for k, gid in enumerate(FRAMES):
+        x0, x1, y0, y1, zin = box[gid]
+        n = k + 1
+        for s in (1, -1):
+            b.begin(f'窓下のテーブル {n}（{"山側" if s > 0 else "海側"}）', L)
+            xa, xb = x0 + 0.03, x1 - 0.03
+            yt = y0 + 0.005
+            zw, zf = (zin + 0.01) * s, 1.50 * s
+            fr = Frame((0, yt, 0), (1, 0, 0), (0, 0, -1))  # n=+y, (a,b)=(x,-z)
+            # 上から見て手前の角を丸めた板
+            za, zb = min(-zw, -zf), max(-zw, -zf)
+            b.prism(fr, rrect2(xa, xb, za, zb, 0.03, 4), -0.025, 0.0, '#d4d7d9', side='#b9bec2')
+            # 下の支え（斜め）
+            b.box(xa + 0.02, xb - 0.02, yt - 0.07, yt - 0.025, min(zw, zw - 0.03 * s), max(zw, zw - 0.03 * s), '#b9bec2')
+            if (n, s) in ((5, 1), (10, -1), (2, 1), (7, -1)):
+                lab = '#3f8f4f' if n in (5, 2) else '#e8e2d0'
+                bottle(b, (xa + xb) / 2 - 0.06, yt, 1.555 * s, lab)
+
+
 def gangway(b):
     """後ろの妻面の幌（ひだ）と幌枠"""
     b.begin('後部・貫通幌（ひだ）と幌枠', LX)
@@ -99,4 +139,5 @@ def gangway(b):
 def build(b):
     recolor(b)
     blinds(b)
+    window_tables(b)
     gangway(b)
